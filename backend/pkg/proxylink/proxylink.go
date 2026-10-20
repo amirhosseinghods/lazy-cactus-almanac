@@ -226,7 +226,7 @@ func parseShadowsocks(raw string) (*Link, error) {
 			userInfo = unescaped
 		}
 	} else {
-		// Legacy: ss://base64(method:password@host:port).
+		// Legacy format: the whole "method:password@host:port" is base64.
 		decoded, err := decodeBase64(body)
 		if err != nil {
 			return nil, fmt.Errorf("shadowsocks link body is not valid base64: %w", err)
@@ -551,12 +551,12 @@ func newLink(protocol string, u *url.URL) (*Link, error) {
 	}, nil
 }
 
-func splitHostPort(hostPort string) (string, int, error) {
+func splitHostPort(hostPort string) (host string, port int, err error) {
 	host, portStr, err := net.SplitHostPort(hostPort)
 	if err != nil {
 		return "", 0, fmt.Errorf("invalid server address %q: %w", hostPort, err)
 	}
-	port, err := strconv.Atoi(portStr)
+	port, err = strconv.Atoi(portStr)
 	if err != nil || port < 1 || port > 65535 || host == "" {
 		return "", 0, fmt.Errorf("invalid server address %q", hostPort)
 	}
