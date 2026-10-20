@@ -533,7 +533,7 @@
     "title": "Split routing and DNS privacy",
     "description": "Keep DNS lookups from leaking through the domestic link, and keep the list of Iranian addresses that Split networks send over the domestic modem up to date.",
     "guardToggle": "DNS leak protection",
-    "guardHint": "Stops sending lookups to the Iranian ISP's DNS server, and if the VPN or Starlink route to the DNS servers drops, lookups are dropped instead of leaking. .ir domains still use the domestic DNS so Iranian sites open.",
+    "guardHint": "While a VPN is the gateway, the router only asks DNS servers reached through it, so leak tests show the VPN's location, not Starlink or the Iranian ISP. If that route drops, lookups are dropped instead of leaking. .ir domains still use the domestic DNS so Iranian sites open.",
     "guardOn": "DNS leak protection is on",
     "guardOff": "DNS leak protection is off",
     "guardFailed": "Failed to change DNS leak protection",

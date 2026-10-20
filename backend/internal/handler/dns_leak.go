@@ -20,10 +20,12 @@ import (
 // RouterOS spreads queries across all of them, so part of every lookup went
 // to the domestic resolver directly.
 //
-// DNS leak protection takes the domestic resolvers out of the server list
-// (.ir names keep their own forward rule to the domestic resolver) and adds
-// a last-resort blackhole for the remaining ones, so a failed tunnel makes
-// DNS fail instead of leak.
+// DNS leak protection keeps only the resolvers routed through the VPN (when
+// there are any), so lookups leave from the VPN's location rather than
+// revealing the domestic ISP or the Starlink point of presence. .ir names
+// keep their own forward rule to the domestic resolver. It also adds a
+// last-resort blackhole for the resolvers, so a failed tunnel makes DNS fail
+// instead of leak.
 const (
 	dnsLeakGuardComment = "nasnet-dns-leak-guard"
 	// Remembers the domestic servers taken out of the list, so turning the
@@ -43,22 +45,37 @@ func dnsLeakGuardRemovedPath(client *routeros.Client) string {
 	return pluginStoragePrefix(client) + routeros.NasnetPanelDir + "/" + dnsLeakGuardRemovedFile
 }
 
-// domesticDNSServers returns the DNS servers the NasNet layout routes over
-// the domestic link (their host routes are tagged Route-to-Domestic...).
-func domesticDNSServers(client *routeros.Client, servers []string) (map[string]bool, error) {
+// leakyDNSServers returns the DNS servers that do not go through the VPN:
+// those the NasNet layout routes over the domestic link, and, when at least
+// one server is routed through the VPN, every server that isn't. Host routes
+// are recognised by their comments (Route-to-VPN-Client, Route-to-Domestic...).
+func leakyDNSServers(client *routeros.Client, servers []string) (map[string]bool, error) {
 	routes, err := client.ListIPRoutesWithFilters(routeros.IPRouteFilter{RoutingTable: "main"})
 	if err != nil {
 		return nil, err
 	}
-	domestic := map[string]bool{}
-	for _, server := range servers {
+	routeComment := func(server string) string {
 		for _, r := range routes {
-			if r.DstAddress == server+"/32" && strings.HasPrefix(r.Comment, "Route-to-Domestic") {
-				domestic[server] = true
+			if r.DstAddress == server+"/32" {
+				return r.Comment
 			}
 		}
+		return ""
 	}
-	return domestic, nil
+	anyVPN := false
+	for _, server := range servers {
+		if strings.HasPrefix(routeComment(server), vpnRoutesComment) {
+			anyVPN = true
+		}
+	}
+	leaky := map[string]bool{}
+	for _, server := range servers {
+		comment := routeComment(server)
+		if strings.HasPrefix(comment, "Route-to-Domestic") || (anyVPN && !strings.HasPrefix(comment, vpnRoutesComment)) {
+			leaky[server] = true
+		}
+	}
+	return leaky, nil
 }
 
 func dnsLeakGuardEnabled(client *routeros.Client) (bool, error) {
@@ -70,15 +87,15 @@ func dnsLeakGuardEnabled(client *routeros.Client) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	domestic, err := domesticDNSServers(client, info.Servers)
+	domestic, err := leakyDNSServers(client, info.Servers)
 	if err != nil {
 		return false, err
 	}
 	return len(domestic) == 0, nil
 }
 
-// setDomesticDNSServers takes the domestic resolvers out of the router's DNS
-// servers (remembering them) or puts them back.
+// setDomesticDNSServers takes the resolvers outside the VPN out of the
+// router's DNS servers (remembering them) or puts them back.
 func setDomesticDNSServers(client *routeros.Client, remove bool) error {
 	info, err := client.GetDNSInfo()
 	if err != nil {
@@ -86,7 +103,7 @@ func setDomesticDNSServers(client *routeros.Client, remove bool) error {
 	}
 	path := dnsLeakGuardRemovedPath(client)
 	if remove {
-		domestic, err := domesticDNSServers(client, info.Servers)
+		domestic, err := leakyDNSServers(client, info.Servers)
 		if err != nil || len(domestic) == 0 {
 			return err
 		}
@@ -99,7 +116,7 @@ func setDomesticDNSServers(client *routeros.Client, remove bool) error {
 			}
 		}
 		if len(keep) == 0 {
-			return errors.New("the router has no DNS server besides the domestic one; add a foreign DNS server first")
+			return errors.New("the router has no DNS server that avoids the domestic link; add a foreign DNS server first")
 		}
 		if err := client.AddFile(path, strings.Join(removed, ",")); err != nil {
 			return err
