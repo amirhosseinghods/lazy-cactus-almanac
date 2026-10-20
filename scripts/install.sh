@@ -6,8 +6,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
 
 # ---- defaults --------------------------------------------------------------
-GH_OWNER="nasnet-community"
-GH_REPO="nasnet-panel"
+# Override to install from a fork's releases, e.g. NASNET_GH_OWNER=someone.
+GH_OWNER="${NASNET_GH_OWNER:-nasnet-community}"
+GH_REPO="${NASNET_GH_REPO:-nasnet-panel}"
 ASSET_PREFIX="nasnet-panel"
 SNAPSHOT_RELEASE="snapshot"
 SNAPSHOT_CHANNEL="dev"

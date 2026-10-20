@@ -120,6 +120,16 @@ flowchart LR
 
 The backend speaks multiple protocols to RouterOS and falls back automatically: REST API first, then native RouterOS API, then SSH/Telnet. The SPA is served by the same Go binary that exposes the JSON API, so there is only one process to run and one port to expose.
 
+## Install this fork (with V2Ray support)
+
+This fork adds V2Ray clients (VLESS/REALITY, VMess, Trojan, Shadowsocks, Hysteria2, TUIC, and subscription links with automatic fastest-server selection). To install it on a MikroTik, run this on a Mac or Linux computer that is on the router's network, and answer the prompts (router IP, user, password):
+
+```bash
+NASNET_GH_OWNER=amirhosseinghods bash <(curl -fsSL https://raw.githubusercontent.com/amirhosseinghods/nasnet-panel/feat/v2ray-client/scripts/install.sh)
+```
+
+It needs `bash`, `curl`, `ssh`, `scp` and `sha256sum` (or `shasum`), and the router needs RouterOS v7 with the container package and container device-mode enabled. Everything else works as described in [section 2](#2-mikrotik-routeros-via-scriptsinstallsh) below.
+
 ## Installation
 
 Four supported paths, in order of expected use.

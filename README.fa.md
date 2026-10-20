@@ -136,6 +136,16 @@ flowchart LR
 
 <a id="installation"></a>
 
+## نصب این fork (با پشتیبانی V2Ray)
+
+این fork کلاینت V2Ray را اضافه می‌کند: VLESS/REALITY، VMess، Trojan، Shadowsocks، Hysteria2، TUIC و لینک اشتراک (Subscription) با انتخاب خودکار سریع‌ترین سرور. برای نصب روی یک میکروتیک، این دستور را روی یک کامپیوتر Mac یا Linux که به شبکه‌ی روتر وصل است اجرا کنید و به سؤال‌ها (آی‌پی روتر، نام کاربری و رمز) جواب دهید:
+
+```bash
+NASNET_GH_OWNER=amirhosseinghods bash <(curl -fsSL https://raw.githubusercontent.com/amirhosseinghods/nasnet-panel/feat/v2ray-client/scripts/install.sh)
+```
+
+روی کامپیوتر به `bash`، `curl`، `ssh`، `scp` و `sha256sum` (یا `shasum`) نیاز است. روتر باید RouterOS v7 با بسته‌ی container و container device-mode فعال داشته باشد. بقیه‌ی مراحل مثل بخش ۲ پایین است.
+
 ## نصب
 
 چهار روش پشتیبانی‌شده، به ترتیب میزان استفاده‌ی مورد انتظار.
