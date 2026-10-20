@@ -64,8 +64,9 @@ interface Draft {
   persistentKeepalive: string;
   // WireGuard import-mode
   configText: string;
-  // V2Ray share link
+  // V2Ray share link, or subscription URL in subscription mode
   v2rayLink: string;
+  v2raySubscription: string;
 }
 
 const EMPTY_DRAFT: Draft = {
@@ -87,6 +88,7 @@ const EMPTY_DRAFT: Draft = {
   persistentKeepalive: '',
   configText: '',
   v2rayLink: '',
+  v2raySubscription: '',
 };
 
 const V2RAY_SCHEMES: Record<string, string> = {
@@ -99,6 +101,16 @@ const V2RAY_SCHEMES: Record<string, string> = {
   tuic: 'TUIC',
 };
 
+/** Whether `url` is an http(s) URL with a host, as the backend requires. */
+export function isSubscriptionUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url.trim());
+    return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && parsed.host !== '';
+  } catch {
+    return false;
+  }
+}
+
 /** Protocol label for a share link, or null when its scheme isn't supported. */
 export function detectV2RayProtocol(link: string): string | null {
   const match = /^([a-z0-9]+):\/\//i.exec(link.trim());
@@ -106,6 +118,8 @@ export function detectV2RayProtocol(link: string): string | null {
 }
 
 type WgMode = 'create' | 'import';
+
+type V2RayMode = 'link' | 'subscription';
 
 interface Props {
   onCancel: () => void;
@@ -125,6 +139,7 @@ export function AddVpnClientDialog({
   const { t } = useTranslation('vpn');
   const [type, setType] = useState<AddVpnType>('l2tp');
   const [wgMode, setWgMode] = useState<WgMode>('import');
+  const [v2rayMode, setV2RayMode] = useState<V2RayMode>('link');
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -173,7 +188,13 @@ export function AddVpnClientDialog({
       base.configText = draft.configText.trim() === '' ? t('addClient.errors.configText') : null;
     }
 
-    if (type === 'v2ray') {
+    if (type === 'v2ray' && v2rayMode === 'subscription') {
+      base.v2raySubscription = isSubscriptionUrl(draft.v2raySubscription)
+        ? null
+        : t('addClient.v2ray.subscriptionInvalid');
+    }
+
+    if (type === 'v2ray' && v2rayMode === 'link') {
       base.v2rayLink =
         draft.v2rayLink.trim() === ''
           ? t('addClient.v2ray.linkRequired')
@@ -183,7 +204,7 @@ export function AddVpnClientDialog({
     }
 
     return base;
-  }, [type, wgMode, draft, t]);
+  }, [type, wgMode, v2rayMode, draft, t]);
 
   const hasErrors = Object.values(errors).some(Boolean);
   const canSubmit = !submitting && !hasErrors;
@@ -233,7 +254,9 @@ export function AddVpnClientDialog({
         });
       } else if (type === 'v2ray') {
         await onSubmitV2Ray({
-          link: draft.v2rayLink.trim(),
+          ...(v2rayMode === 'subscription'
+            ? { subscription: draft.v2raySubscription.trim() }
+            : { link: draft.v2rayLink.trim() }),
           comment: draft.comment.trim() || undefined,
           disabled: draft.disabled,
         });
@@ -336,6 +359,8 @@ export function AddVpnClientDialog({
 
         {type === 'v2ray' ? (
           <V2RayFields
+            mode={v2rayMode}
+            onModeChange={setV2RayMode}
             draft={draft}
             set={set}
             errors={errors}
@@ -664,38 +689,87 @@ function WireguardImportFields({ draft, set, errors, touched, markTouched }: Wir
   );
 }
 
-function V2RayFields({ draft, set, errors, touched, markTouched }: WireguardFieldsProps) {
+interface V2RayFieldsProps extends WireguardFieldsProps {
+  mode: V2RayMode;
+  onModeChange: (mode: V2RayMode) => void;
+}
+
+function V2RayFields({
+  mode,
+  onModeChange,
+  draft,
+  set,
+  errors,
+  touched,
+  markTouched,
+}: V2RayFieldsProps) {
   const { t } = useTranslation('vpn');
   const protocol = detectV2RayProtocol(draft.v2rayLink);
   return (
     <>
       <FieldRow>
-        <Label>
-          <span>{t('addClient.v2ray.link')}</span>
-          <Textarea
-            value={draft.v2rayLink}
-            onChange={(e) => set('v2rayLink', e.target.value)}
-            onBlur={() => markTouched('v2rayLink')}
-            rows={4}
-            placeholder={t('addClient.v2ray.linkPlaceholder')}
-            aria-label={t('addClient.v2ray.link')}
-            dir="ltr"
-            spellCheck={false}
-            autoComplete="off"
-            aria-invalid={touched.v2rayLink && !!errors.v2rayLink}
-            style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}
+        <Label as="div">
+          <Switch
+            label={t('addClient.v2ray.useSubscription')}
+            checked={mode === 'subscription'}
+            onChange={(e) => onModeChange(e.target.checked ? 'subscription' : 'link')}
           />
-          {touched.v2rayLink && errors.v2rayLink ? (
-            <FormError>{errors.v2rayLink}</FormError>
-          ) : protocol ? (
-            <span>{t('addClient.v2ray.detected', { protocol })}</span>
-          ) : (
-            <span>{t('addClient.v2ray.linkHint')}</span>
-          )}
         </Label>
       </FieldRow>
+      {mode === 'subscription' ? (
+        <FieldRow>
+          <Label>
+            <span>{t('addClient.v2ray.subscription')}</span>
+            <Input
+              value={draft.v2raySubscription}
+              onChange={(e) => set('v2raySubscription', e.target.value)}
+              onBlur={() => markTouched('v2raySubscription')}
+              placeholder="https://…"
+              aria-label={t('addClient.v2ray.subscription')}
+              dir="ltr"
+              inputMode="url"
+              spellCheck={false}
+              autoComplete="off"
+              aria-invalid={touched.v2raySubscription && !!errors.v2raySubscription}
+            />
+            {touched.v2raySubscription && errors.v2raySubscription ? (
+              <FormError>{errors.v2raySubscription}</FormError>
+            ) : (
+              <span>{t('addClient.v2ray.subscriptionHint')}</span>
+            )}
+          </Label>
+        </FieldRow>
+      ) : (
+        <FieldRow>
+          <Label>
+            <span>{t('addClient.v2ray.link')}</span>
+            <Textarea
+              value={draft.v2rayLink}
+              onChange={(e) => set('v2rayLink', e.target.value)}
+              onBlur={() => markTouched('v2rayLink')}
+              rows={4}
+              placeholder={t('addClient.v2ray.linkPlaceholder')}
+              aria-label={t('addClient.v2ray.link')}
+              dir="ltr"
+              spellCheck={false}
+              autoComplete="off"
+              aria-invalid={touched.v2rayLink && !!errors.v2rayLink}
+              style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}
+            />
+            {touched.v2rayLink && errors.v2rayLink ? (
+              <FormError>{errors.v2rayLink}</FormError>
+            ) : protocol ? (
+              <span>{t('addClient.v2ray.detected', { protocol })}</span>
+            ) : (
+              <span>{t('addClient.v2ray.linkHint')}</span>
+            )}
+          </Label>
+        </FieldRow>
+      )}
       <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--font-sm)' }}>
-        {t('addClient.v2ray.containerNote')}
+        {mode === 'subscription'
+          ? t('addClient.v2ray.subscriptionNote')
+          : t('addClient.v2ray.containerNote')}
       </p>
     </>
   );

@@ -116,8 +116,9 @@ test.describe('V2Ray VPN clients', () => {
     ).toBeVisible({ timeout: 15_000 });
     const row = page.getByRole('row', { name: /v2ray-brave-otter/ });
     await expect(row.getByText('V2RAY', { exact: true })).toBeVisible();
-    // V2Ray clients are recreated rather than edited.
+    // V2Ray clients are recreated rather than edited; they get a details view instead.
     await expect(row.getByRole('button', { name: /edit/i })).toHaveCount(0);
+    await expect(row.getByRole('button', { name: 'Details for Germany' })).toBeVisible();
   });
 
   test('rejects links with an unsupported scheme without calling the backend', async ({
@@ -190,5 +191,141 @@ test.describe('V2Ray VPN clients', () => {
 
     await expect.poll(() => deleteCalls).toBe(1);
     await expect(page.getByRole('row', { name: /v2ray-brave-otter/ })).toBeHidden();
+  });
+
+  test('adds a client from a subscription URL', async ({
+    page,
+    context,
+    resetMocks,
+    seedRouter,
+  }) => {
+    await resetMocks();
+    await seedRouter({ id: ROUTER_ID, name: 'V2Ray Router', host: '10.0.0.20' });
+    await signIn(context);
+    await context.route('**/api/vpn/clients', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: envelope([]) });
+    });
+    const posts: Array<Record<string, unknown>> = [];
+    await context.route('**/api/vpn/v2ray/client', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      posts.push(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill({
+        status: 202,
+        contentType: 'application/json',
+        body: envelope(
+          { name: 'v2ray-sub-one', phase: 'preparing', message: '', done: false, failed: false },
+          202,
+        ),
+      });
+    });
+    await context.route('**/api/vpn/v2ray/client/status/v2ray-sub-one', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: envelope({
+          name: 'v2ray-sub-one',
+          phase: 'done',
+          message: '',
+          done: true,
+          failed: false,
+        }),
+      });
+    });
+
+    await page.goto(`/router/${ROUTER_ID}/wan`);
+    await page.getByRole('button', { name: 'New' }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog
+      .getByRole('radiogroup', { name: 'VPN client type' })
+      .getByRole('radio', { name: 'V2Ray' })
+      .click();
+    await dialog.getByRole('switch', { name: 'Use a subscription link' }).check();
+
+    const url = dialog.getByRole('textbox', { name: 'Subscription URL' });
+    await url.fill('not a url');
+    await url.blur();
+    await expect(dialog.getByText('Enter an http:// or https:// URL.')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Add client' })).toBeDisabled();
+
+    await url.fill('https://sub.example.com/s/abc');
+    await dialog.getByLabel('Name').fill('My subscription');
+    await dialog.getByRole('button', { name: 'Add client' }).click();
+
+    await expect.poll(() => posts.length).toBe(1);
+    expect(posts[0]).toEqual({
+      subscription: 'https://sub.example.com/s/abc',
+      comment: 'My subscription',
+      disabled: false,
+    });
+  });
+
+  test('shows subscription servers and refreshes on demand', async ({
+    page,
+    context,
+    resetMocks,
+    seedRouter,
+  }) => {
+    await resetMocks();
+    await seedRouter({ id: ROUTER_ID, name: 'V2Ray Router', host: '10.0.0.20' });
+    await signIn(context);
+    await context.route('**/api/vpn/clients', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: envelope([v2rayClient]),
+      });
+    });
+    await context.route(`**/api/vpn/v2ray/client/${v2rayClient.name}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: envelope({
+          name: v2rayClient.name,
+          comment: 'Germany',
+          mode: 'subscription',
+          protocol: 'vless',
+          server: 'de1.example.com:443',
+          running: true,
+          disabled: false,
+          pulling: false,
+          skipped: 1,
+          refreshedAt: '2026-10-20T10:00:00Z',
+          servers: [
+            { name: 'DE 1', protocol: 'vless', server: 'de1.example.com:443', selected: false },
+            { name: 'NL 1', protocol: 'trojan', server: 'nl1.example.com:443', selected: true },
+          ],
+        }),
+      });
+    });
+    let refreshes = 0;
+    await context.route(`**/api/vpn/v2ray/client/${v2rayClient.name}/refresh`, async (route) => {
+      refreshes += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: envelope({
+          changed: false,
+          serverCount: 2,
+          refreshedAt: '2026-10-20T12:00:00Z',
+        }),
+      });
+    });
+
+    await page.goto(`/router/${ROUTER_ID}/wan`);
+    await page
+      .getByRole('row', { name: /v2ray-brave-otter/ })
+      .getByRole('button', { name: 'Details for Germany' })
+      .click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Subscription (automatic fastest server)')).toBeVisible();
+    await expect(dialog.getByRole('row', { name: /NL 1/ }).getByText('In use')).toBeVisible();
+    await expect(dialog.getByRole('row', { name: /DE 1/ }).getByText('In use')).toHaveCount(0);
+
+    await dialog.getByRole('button', { name: 'Refresh now' }).click();
+    await expect.poll(() => refreshes).toBe(1);
+    await expect(
+      page.getByRole('status').filter({ hasText: 'Server list is unchanged' }),
+    ).toBeVisible();
   });
 });

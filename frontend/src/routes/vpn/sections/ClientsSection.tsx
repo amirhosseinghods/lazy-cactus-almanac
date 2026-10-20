@@ -26,6 +26,7 @@ import {
 import { AddVpnClientDialog } from '../dialogs/AddVpnClientDialog';
 import { EditL2tpClientDialog } from '../dialogs/EditL2tpClientDialog';
 import { EditWgClientDialog } from '../dialogs/EditWgClientDialog';
+import { V2RayDetailsDialog } from '../dialogs/V2RayDetailsDialog';
 import { PaginationControls } from '../PaginationControls';
 import { usePagedFilter } from '../hooks/usePagedFilter';
 import { PAGE_SIZE } from '../utils';
@@ -326,6 +327,16 @@ export function ClientsSection({
               tone: 'success',
             });
             onClientUpdated({ ...target, comment: changes.comment, enabled: !changes.disabled });
+          }}
+        />
+      ) : null}
+      {editing && editing.protocol === 'v2ray' ? (
+        <V2RayDetailsDialog
+          client={editing}
+          creds={creds}
+          onClose={() => {
+            setEditing(null);
+            onChanged();
           }}
         />
       ) : null}

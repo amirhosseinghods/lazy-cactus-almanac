@@ -420,7 +420,12 @@
       "detected": "Detected protocol: {{protocol}}",
       "linkRequired": "Paste a share link.",
       "unsupported": "Unsupported link. It must start with vless://, vmess://, trojan://, ss://, hysteria2://, hy2:// or tuic://.",
-      "containerNote": "The client runs as a small container on the router. The first setup downloads the sing-box image and can take a few minutes. The container package must be enabled on the router."
+      "containerNote": "The client runs as a small container on the router. The first setup downloads the sing-box image and can take a few minutes. The container package must be enabled on the router.",
+      "useSubscription": "Use a subscription link",
+      "subscription": "Subscription URL",
+      "subscriptionHint": "The panel downloads the server list, keeps up to 20 servers and switches to the fastest one automatically.",
+      "subscriptionInvalid": "Enter an http:// or https:// URL.",
+      "subscriptionNote": "The server list is refreshed every 12 hours. The subscription is downloaded over the router's foreign link, so your subscription provider sees that link's IP address. Traffic and DNS only ever leave through the tunnel; if every server is down, traffic stops instead of leaking."
     }
   },
   "addServer": {
@@ -476,5 +481,27 @@
     "presharedKeyReplace": "Preshared key (replace)",
     "noPeers": "This WireGuard client has no peers.",
     "deletePeerDescription": "Remove peer \"{{name}}\" from this client? This cannot be undone."
+  },
+  "v2ray": {
+    "detailsNamed": "Details for {{name}}",
+    "loadFailed": "Failed to load V2Ray client details.",
+    "mode": "Mode",
+    "modeLink": "Single share link",
+    "modeSubscription": "Subscription (automatic fastest server)",
+    "serverCount": "Servers",
+    "skipped": "({{value}} unsupported skipped)",
+    "activeServer": "Server in use",
+    "activeUnknown": "Not known yet",
+    "lastRefresh": "Last refreshed",
+    "server": "Server",
+    "state": "State",
+    "inUse": "In use",
+    "refresh": "Refresh now",
+    "refreshing": "Refreshing…",
+    "refreshChanged": "Server list updated ({{count}} servers); the client restarted",
+    "refreshUnchanged": "Server list is unchanged",
+    "refreshFailed": "Failed to refresh subscription",
+    "autoSwitchNote": "sing-box tests every server every 5 minutes and moves traffic to the fastest one. Traffic and DNS never leave outside the tunnel, and IPv6 is blocked.",
+    "leakNote": "Traffic and DNS never leave outside the tunnel, and IPv6 is blocked. If the server is down, traffic stops instead of leaking."
   }
 }

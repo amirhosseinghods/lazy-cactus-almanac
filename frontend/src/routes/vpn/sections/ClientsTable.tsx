@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge, Button, DataTable, Switch, useToast } from '@nasnet/ui';
-import { ArrowDown, ArrowUp, Cable, Pencil, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Cable, Info, Pencil, Trash2 } from 'lucide-react';
 import {
   ApiError,
   fetchForeignGateway,
@@ -220,22 +220,24 @@ export function ClientsTable({ rows, totalRows, creds, onToggled, onEdit, onDele
             if (c.protocol !== 'l2tp' && c.protocol !== 'wireguard' && c.protocol !== 'v2ray') {
               return null;
             }
-            // V2Ray clients are recreated from a new link rather than edited.
-            const editable = c.protocol !== 'v2ray';
+            // V2Ray clients are recreated from a new link rather than edited,
+            // so their button opens a read-only details view instead.
+            const isV2Ray = c.protocol === 'v2ray';
+            const label = isV2Ray
+              ? t('v2ray.detailsNamed', { name: c.comment || c.name })
+              : t('shared.editNamed', { name: c.name });
             return (
               <span style={{ display: 'inline-flex', gap: 8 }}>
-                {editable ? (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={!creds}
-                    title={t('shared.editNamed', { name: c.name })}
-                    aria-label={t('shared.editNamed', { name: c.name })}
-                    onClick={() => onEdit(c)}
-                  >
-                    <Pencil size={14} aria-hidden />
-                  </Button>
-                ) : null}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!creds}
+                  title={label}
+                  aria-label={label}
+                  onClick={() => onEdit(c)}
+                >
+                  {isV2Ray ? <Info size={14} aria-hidden /> : <Pencil size={14} aria-hidden />}
+                </Button>
                 <Button
                   size="sm"
                   variant="danger"

@@ -579,10 +579,69 @@ export async function addL2TPClient(
   });
 }
 
+/** Exactly one of `link` and `subscription` must be set. */
 export interface AddV2RayClientRequest {
-  link: string;
+  link?: string;
+  subscription?: string;
   comment?: string;
   disabled?: boolean;
+}
+
+export interface V2RayServer {
+  name?: string;
+  protocol: string;
+  server: string;
+  selected: boolean;
+}
+
+export interface V2RayClientDetails {
+  name: string;
+  comment?: string;
+  mode: 'link' | 'subscription';
+  protocol: string;
+  server: string;
+  address?: string;
+  running: boolean;
+  disabled: boolean;
+  pulling: boolean;
+  servers?: V2RayServer[];
+  skipped?: number;
+  refreshedAt?: string;
+}
+
+export interface V2RayRefreshResponse {
+  changed: boolean;
+  serverCount: number;
+  skipped?: number;
+  refreshedAt: string;
+}
+
+export async function fetchV2RayClientDetails(
+  creds: VPNCredentials,
+  name: string,
+  signal?: AbortSignal,
+): Promise<V2RayClientDetails> {
+  return apiRequest<V2RayClientDetails>(`/api/vpn/v2ray/client/${encodeURIComponent(name)}`, {
+    method: 'GET',
+    headers: authHeaders(creds),
+    cache: 'no-store',
+    signal,
+  });
+}
+
+export async function refreshV2RaySubscription(
+  creds: VPNCredentials,
+  name: string,
+  signal?: AbortSignal,
+): Promise<V2RayRefreshResponse> {
+  return apiRequest<V2RayRefreshResponse>(
+    `/api/vpn/v2ray/client/${encodeURIComponent(name)}/refresh`,
+    {
+      method: 'POST',
+      headers: authHeaders(creds),
+      signal,
+    },
+  );
 }
 
 export interface V2RayClientTaskStatus {
