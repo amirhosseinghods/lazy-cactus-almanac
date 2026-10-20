@@ -41,6 +41,11 @@ func HandleGetForeignGateway(c echo.Context) error {
 
 	if len(routes) > 0 {
 		data["gateway"] = routes[0].Gateway
+		// A V2Ray client is routed to by its container's address; report it
+		// by client name like every other VPN client.
+		if name := v2rayClientForGateway(client, routes[0].Gateway); name != "" {
+			data["gateway"] = name
+		}
 	}
 
 	return SuccessResponse(c, http.StatusOK, "Foreign gateway route retrieved successfully", data)
@@ -74,6 +79,11 @@ func HandleUpdateForeignGateway(c echo.Context) error {
 		return ErrorResponse(c, http.StatusBadRequest, "Gateway is required", nil)
 	}
 
+	gateway, err := resolveV2RayGateway(client, req.Gateway)
+	if err != nil {
+		return ErrorResponse(c, http.StatusBadRequest, "Invalid gateway", err)
+	}
+
 	filter := routeros.IPRouteFilter{
 		Comment: "Route-to-VPN-Client",
 	}
@@ -85,7 +95,7 @@ func HandleUpdateForeignGateway(c echo.Context) error {
 
 	for _, route := range routes {
 		config := routeros.IPRouteConfig{
-			Gateway: req.Gateway,
+			Gateway: gateway,
 		}
 		if err := client.UpdateIPRoute(route.ID, config); err != nil {
 			return ErrorResponse(c, http.StatusInternalServerError, "Failed to update route", err)
@@ -93,7 +103,7 @@ func HandleUpdateForeignGateway(c echo.Context) error {
 	}
 
 	if len(routes) > 0 {
-		persistForeignGatewaySetting(c, client, req.Gateway)
+		persistForeignGatewaySetting(c, client, gateway)
 	}
 
 	resp := ForeignGatewayResponse{

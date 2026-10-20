@@ -1180,6 +1180,28 @@ func (c *Client) RemoveVethInterface(name string) error {
 	return nil
 }
 
+// ListVethAddresses returns the IPv4 address (without prefix length) of every
+// veth interface, keyed by interface name.
+func (c *Client) ListVethAddresses() (map[string]string, error) {
+	results, err := c.GetAll("/interface/veth")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list veth interfaces: %w", err)
+	}
+
+	addresses := make(map[string]string, len(results))
+	for _, result := range results {
+		for _, addr := range strings.Split(result["address"], ",") {
+			ip, _, _ := strings.Cut(strings.TrimSpace(addr), "/")
+			if ip != "" && !strings.Contains(ip, ":") {
+				addresses[result["name"]] = ip
+				break
+			}
+		}
+	}
+
+	return addresses, nil
+}
+
 // ErrInterfaceNotFound is returned by ResetInterfaceCounters when no interface matches.
 var ErrInterfaceNotFound = errors.New("interface not found")
 

@@ -111,6 +111,8 @@ type MangleRuleConfig struct {
 	OutIface          string
 	ConnectionState   string
 	NewConnectionMark string
+	NewRoutingMark    string
+	DstAddressList    string
 	PlaceBefore       string
 	Disabled          bool
 	Log               bool
@@ -568,6 +570,12 @@ func (c *Client) AddMangleRule(config MangleRuleConfig) (string, error) {
 	}
 	if config.NewConnectionMark != "" {
 		args = append(args, "=new-connection-mark="+config.NewConnectionMark)
+	}
+	if config.NewRoutingMark != "" {
+		args = append(args, "=new-routing-mark="+config.NewRoutingMark)
+	}
+	if config.DstAddressList != "" {
+		args = append(args, "=dst-address-list="+config.DstAddressList)
 	}
 	if config.PassThrough {
 		args = append(args, "=passthrough=yes")

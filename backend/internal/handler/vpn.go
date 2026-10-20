@@ -214,6 +214,14 @@ func HandleListVPNClients(c echo.Context) error {
 		}
 	}
 
+	v2rayClients, err := listV2RayClients(client)
+	if err != nil {
+		// The container package may simply not be installed; the other
+		// clients are still worth returning.
+		c.Logger().Warnf("Failed to list V2Ray clients: %v", err)
+	}
+	filtered = append(filtered, v2rayClients...)
+
 	response := ToVPNClientResponseList(filtered)
 
 	return SuccessResponse(c, http.StatusOK, "VPN clients retrieved successfully", response)
@@ -306,6 +314,15 @@ func HandleGetVPNClient(c echo.Context) error {
 		return ErrorResponse(c, http.StatusBadRequest, "VPN client name or ID is required", nil)
 	}
 
+	if isV2RayClientName(name) {
+		info, err := client.GetContainer(name)
+		if err != nil {
+			return ErrorResponse(c, http.StatusNotFound, "VPN client not found", err)
+		}
+		vpn := v2rayVPNClientInfo(info)
+		return SuccessResponse(c, http.StatusOK, "VPN client retrieved successfully", ToVPNClientResponse(&vpn))
+	}
+
 	vpnClient, err := client.GetVPNClient(name)
 	if err != nil {
 		return ErrorResponse(c, http.StatusNotFound, "VPN client not found", err)
@@ -349,6 +366,10 @@ func HandleUpdateVPNClient(c echo.Context) error {
 
 	if req.Disabled == nil && req.Comment == nil {
 		return ErrorResponse(c, http.StatusBadRequest, "At least one field (disabled or comment) must be provided for update", nil)
+	}
+
+	if isV2RayClientName(name) {
+		return updateV2RayClient(c, client, name, req)
 	}
 
 	if err := client.UpdateVPNClientSettings(name, req.Disabled, req.Comment); err != nil {
