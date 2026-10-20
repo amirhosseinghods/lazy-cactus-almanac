@@ -688,6 +688,11 @@ func resolveV2RayGateway(client *routeros.Client, gateway string) (string, error
 	if err != nil {
 		return "", fmt.Errorf("V2Ray client %s not found: %w", gateway, err)
 	}
+	// Routing to a client still downloading, or one that never started,
+	// sends the VPN's traffic into a dead end.
+	if !info.Running {
+		return "", fmt.Errorf("V2Ray client %s is not running yet", gateway)
+	}
 	ip, err := v2rayClientIP(client, info)
 	if err != nil {
 		return "", err

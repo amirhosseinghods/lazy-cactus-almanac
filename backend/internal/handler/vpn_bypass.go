@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -149,6 +150,9 @@ func HandleSetVPNBypass(c echo.Context) error {
 		if err != nil || prev == "" {
 			return ErrorResponse(c, http.StatusConflict, "The VPN in use before the bypass is unknown; choose a VPN client as the gateway instead", err)
 		}
+		if err := checkRestorableGateway(client, prev); err != nil {
+			return ErrorResponse(c, http.StatusConflict, "The VPN in use before the bypass is gone; choose a VPN client as the gateway instead", err)
+		}
 		if err := setVPNRoutesGateway(client, prev); err != nil {
 			return ErrorResponse(c, http.StatusInternalServerError, "Failed to restore the VPN", err)
 		}
@@ -160,6 +164,31 @@ func HandleSetVPNBypass(c echo.Context) error {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to read VPN bypass state", err)
 	}
 	return SuccessResponse(c, http.StatusOK, "VPN bypass updated", state)
+}
+
+// checkRestorableGateway makes sure turning the bypass off would not point
+// the VPN routes at something that has since been removed or stopped.
+func checkRestorableGateway(client *routeros.Client, gateway string) error {
+	if strings.HasSuffix(gateway, "%"+pluginContainersBridge) {
+		name := v2rayClientForGateway(client, gateway)
+		if name == "" {
+			return fmt.Errorf("no V2Ray client answers at %s", gateway)
+		}
+		info, err := client.GetContainer(name)
+		if err != nil {
+			return err
+		}
+		if !info.Running {
+			return fmt.Errorf("V2Ray client %s is not running", name)
+		}
+		return nil
+	}
+	if strings.ContainsAny(gateway, "%.") {
+		// An address gateway (such as another uplink); RouterOS checks it.
+		return nil
+	}
+	_, err := client.GetInterface(gateway)
+	return err
 }
 
 func setVPNRoutesGateway(client *routeros.Client, gateway string) error {

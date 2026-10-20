@@ -113,11 +113,13 @@ func (c *Client) GetFileContents(nameOrID string, chunkSize int64) (string, erro
 		var success bool
 
 		for attempt := 0; attempt < maxRetries; attempt++ {
-			rr, err := c.Run([]string{"/file/read",
-				"=file=" + nameOrID,
-				"=offset=" + fmt.Sprintf("%d", off),
-				"=chunk-size=" + fmt.Sprintf("%d", chunk),
-			})
+			// Run expects the connection lock held: two goroutines reading
+			// one RouterOS connection at once crash its reader.
+			rr, err := c.Execute("/file/read",
+				"=file="+nameOrID,
+				"=offset="+fmt.Sprintf("%d", off),
+				"=chunk-size="+fmt.Sprintf("%d", chunk),
+			)
 			if err != nil {
 				lastErr = err
 				if attempt < maxRetries-1 {
