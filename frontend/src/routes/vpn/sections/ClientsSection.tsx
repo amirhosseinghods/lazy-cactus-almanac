@@ -33,6 +33,7 @@ import { PAGE_SIZE } from '../utils';
 import { summarizeWireguardImport } from '../wgClientSummary';
 import { ClientsTable } from './ClientsTable';
 import { SectionHeader } from './SectionHeader';
+import { VpnBypassCard } from './VpnBypassCard';
 
 const V2RAY_POLL_INTERVAL_MS = 3000;
 
@@ -268,6 +269,11 @@ export function ClientsSection({
 
   return (
     <Stack>
+      <VpnBypassCard
+        creds={creds}
+        onChanged={onChanged}
+        labelFor={(name) => clients.find((c) => c.name === name)?.comment || name}
+      />
       <Card>
         <SectionHeader
           title={t('clients.title')}

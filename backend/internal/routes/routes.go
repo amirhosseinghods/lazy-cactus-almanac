@@ -199,6 +199,8 @@ func RegisterRoutes(e *echo.Echo) {
 	routeGroup.Use(middleware.RouterOSAuth)
 	routeGroup.GET("/foreign-gateway", handler.HandleGetForeignGateway)
 	routeGroup.PUT("/foreign-gateway", handler.HandleUpdateForeignGateway)
+	routeGroup.GET("/vpn-bypass", handler.HandleGetVPNBypass)
+	routeGroup.PUT("/vpn-bypass", handler.HandleSetVPNBypass)
 
 	diagGroup := e.Group("/api/diag")
 	diagGroup.Use(middleware.RouterOSAuth)

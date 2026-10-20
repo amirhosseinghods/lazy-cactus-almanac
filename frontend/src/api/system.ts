@@ -440,3 +440,37 @@ export async function fetchSystemOverview(
     ...dynamic,
   };
 }
+
+export interface VPNBypassState {
+  enabled: boolean;
+  /** VPN client the bypass returns to when turned off. */
+  restoreTo?: string;
+}
+
+export async function fetchVPNBypass(
+  creds: SystemCredentials,
+  signal?: AbortSignal,
+): Promise<VPNBypassState> {
+  return apiRequest<VPNBypassState>('/api/route/vpn-bypass', {
+    method: 'GET',
+    headers: authHeaders(creds),
+    cache: 'no-store',
+    signal,
+  });
+}
+
+export async function setVPNBypass(
+  creds: SystemCredentials,
+  enabled: boolean,
+  signal?: AbortSignal,
+): Promise<VPNBypassState> {
+  return apiRequest<VPNBypassState>('/api/route/vpn-bypass', {
+    method: 'PUT',
+    headers: {
+      ...authHeaders(creds),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ enabled }),
+    signal,
+  });
+}
