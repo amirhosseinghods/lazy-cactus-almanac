@@ -221,6 +221,9 @@ func HandleListVPNClients(c echo.Context) error {
 		c.Logger().Warnf("Failed to list V2Ray clients: %v", err)
 	}
 	filtered = append(filtered, v2rayClients...)
+	if len(v2rayClients) > 0 {
+		ensureV2RayRefresher(c)
+	}
 
 	response := ToVPNClientResponseList(filtered)
 

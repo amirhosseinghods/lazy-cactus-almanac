@@ -3,8 +3,8 @@ package handler
 import (
 	"fmt"
 	"log"
-	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -24,20 +24,45 @@ const (
 	// VPNTypeV2Ray is the VPN client type reported for V2Ray clients.
 	VPNTypeV2Ray = "v2ray"
 
-	v2rayNamePrefix  = "v2ray-"
-	v2rayVethPrefix  = "veth-"
-	v2rayImage       = "ghcr.io/sagernet/sing-box:v1.14.3"
-	v2rayConfigDir   = "/etc/sing-box"
-	v2raySubnetBase  = "192.168.50."
-	v2raySubnetMask  = "/24"
-	v2rayGatewayIP   = "192.168.50.1"
-	v2rayFirstHostIP = 10
+	v2rayNamePrefix = "v2ray-"
+	v2rayVethPrefix = "veth-"
+	// The default image is the trimmed sing-box build from
+	// docker/sing-box-slim. The official image (~90MB extracted) does not fit
+	// on routers with 128MB of flash.
+	v2rayDefaultImage = "ghcr.io/amirhosseinghods/sing-box-slim:1.14.3"
+	v2rayImageEnv     = "NASNET_V2RAY_IMAGE"
+	v2rayConfigDir    = "/etc/sing-box"
+	v2raySubnetBase   = "192.168.50."
+	v2raySubnetMask   = "/24"
+	v2rayGatewayIP    = "192.168.50.1"
+	v2rayFirstHostIP  = 10
 
 	// Container env keys carrying display metadata, so listing clients needs
 	// no extra round trips to read the config file back.
 	v2rayEnvProtocol = "NASNET_V2RAY_PROTOCOL"
 	v2rayEnvServer   = "NASNET_V2RAY_SERVER"
+	v2rayEnvMode     = "NASNET_V2RAY_MODE"
+
+	v2rayModeLink         = "link"
+	v2rayModeSubscription = "subscription"
+
+	// The router's CPU and RAM are shared with routing itself, so sing-box is
+	// held to one core and a modest heap, with a hard ceiling RouterOS
+	// enforces in case the Go runtime overshoots.
+	v2rayGoMaxProcs      = "1"
+	v2rayGoMemLimit      = "40MiB"
+	v2rayMemoryHighBytes = 64 << 20
+	v2rayMemoryMaxBytes  = 96 << 20
 )
+
+// v2rayImage returns the sing-box image V2Ray clients run, overridable with
+// NASNET_V2RAY_IMAGE for routers with room for (or a mirror of) another build.
+func v2rayImage() string {
+	if image := strings.TrimSpace(os.Getenv(v2rayImageEnv)); image != "" {
+		return image
+	}
+	return v2rayDefaultImage
+}
 
 // v2rayRoutingComment tags the mangle rule that sends a V2Ray container's own
 // traffic (to its proxy server) out the foreign link instead of back into the
@@ -132,11 +157,39 @@ func HandleAddV2RayClient(c echo.Context) error {
 		return ErrorResponse(c, http.StatusBadRequest, "Invalid request body", err)
 	}
 
-	link, err := proxylink.Parse(req.Link)
-	if err != nil {
-		return ErrorResponse(c, http.StatusBadRequest, "Invalid V2Ray link", err)
+	hasLink, hasSubscription := strings.TrimSpace(req.Link) != "", strings.TrimSpace(req.Subscription) != ""
+	if hasLink == hasSubscription {
+		return ErrorResponse(c, http.StatusBadRequest, "Provide either a share link or a subscription URL", nil)
 	}
-	config, err := proxylink.GatewayConfig(link)
+
+	var (
+		res  *proxylink.SubscriptionResult
+		meta *v2rayMeta
+		mode = v2rayModeLink
+	)
+	if hasSubscription {
+		subscriptionURL, err := validateSubscriptionURL(req.Subscription)
+		if err != nil {
+			return ErrorResponse(c, http.StatusBadRequest, "Invalid subscription URL", err)
+		}
+		if res, err = fetchSubscription(c.Request().Context(), subscriptionURL); err != nil {
+			return ErrorResponse(c, http.StatusBadGateway, "Failed to load subscription", err)
+		}
+		secret, err := randomSecret()
+		if err != nil {
+			return ErrorResponse(c, http.StatusInternalServerError, "Failed to generate API secret", err)
+		}
+		meta = newV2RayMeta(subscriptionURL, secret, res)
+		mode = v2rayModeSubscription
+	} else {
+		link, err := proxylink.Parse(req.Link)
+		if err != nil {
+			return ErrorResponse(c, http.StatusBadRequest, "Invalid V2Ray link", err)
+		}
+		res = &proxylink.SubscriptionResult{Links: []*proxylink.Link{link}}
+		meta = newV2RayMeta("", "", res)
+	}
+	config, err := proxylink.GatewayConfig(res.Links, proxylink.GatewayOptions{ClashAPISecret: meta.APISecret})
 	if err != nil {
 		return ErrorResponse(c, http.StatusInternalServerError, "Failed to build sing-box configuration", err)
 	}
@@ -147,8 +200,8 @@ func HandleAddV2RayClient(c echo.Context) error {
 	}
 
 	comment := strings.TrimSpace(req.Comment)
-	if comment == "" {
-		comment = link.Name
+	if comment == "" && mode == v2rayModeLink {
+		comment = res.Links[0].Name
 	}
 
 	task := &v2rayTask{phase: "preparing", message: "preparing"}
@@ -160,7 +213,8 @@ func HandleAddV2RayClient(c echo.Context) error {
 	go createV2RayClient(client, task, v2rayDeployment{
 		name:     name,
 		comment:  comment,
-		link:     link,
+		mode:     mode,
+		meta:     meta,
 		config:   string(config),
 		disabled: req.Disabled != nil && *req.Disabled,
 	})
@@ -171,7 +225,8 @@ func HandleAddV2RayClient(c echo.Context) error {
 type v2rayDeployment struct {
 	name     string
 	comment  string
-	link     *proxylink.Link
+	mode     string
+	meta     *v2rayMeta
 	config   string
 	disabled bool
 }
@@ -231,8 +286,12 @@ func createV2RayClient(client *routeros.Client, task *v2rayTask, d v2rayDeployme
 		return
 	}
 	undo = append(undo, func() { _, _ = removePluginVolumeDir(client, d.name) })
-	if err := client.AddFile(volumeDir+"/config.json", d.config); err != nil {
+	if err := client.AddFile(volumeDir+"/"+v2rayConfigFile, d.config); err != nil {
 		fail("failed to write sing-box configuration", err)
+		return
+	}
+	if err := writeV2RayMeta(client, volumeDir, d.meta); err != nil {
+		fail("failed to write client metadata", err)
 		return
 	}
 	if err := client.AddFile(volumeDir+"/entry.sh", proxylink.GatewayEntrypoint); err != nil {
@@ -246,6 +305,7 @@ func createV2RayClient(client *routeros.Client, task *v2rayTask, d v2rayDeployme
 	undo = append(undo, func() { _ = client.RemoveContainerMount(d.name) })
 
 	task.set("creating_container", "creating container "+d.name)
+	image := v2rayImage()
 	rootDir, err := preparePluginRootDir(client, d.name)
 	if err != nil {
 		fail("failed to prepare container directory", err)
@@ -255,12 +315,17 @@ func createV2RayClient(client *routeros.Client, task *v2rayTask, d v2rayDeployme
 		Name:        d.name,
 		Interface:   veth,
 		RootDir:     rootDir,
-		RemoteImage: v2rayImage,
+		RemoteImage: image,
 		Hostname:    d.name,
 		Env: joinEnvPairs(map[string]string{
-			v2rayEnvProtocol: d.link.Protocol,
-			v2rayEnvServer:   net.JoinHostPort(d.link.Server, fmt.Sprint(d.link.Port)),
+			v2rayEnvMode:     d.mode,
+			v2rayEnvProtocol: d.meta.Servers[0].Protocol,
+			v2rayEnvServer:   d.meta.Servers[0].Server,
+			"GOMAXPROCS":     v2rayGoMaxProcs,
+			"GOMEMLIMIT":     v2rayGoMemLimit,
 		}),
+		MemoryHigh:  v2rayMemoryHighBytes,
+		MemoryMax:   v2rayMemoryMaxBytes,
 		MountLists:  d.name,
 		Entrypoint:  "/bin/sh",
 		Cmd:         v2rayConfigDir + "/entry.sh",
@@ -273,7 +338,7 @@ func createV2RayClient(client *routeros.Client, task *v2rayTask, d v2rayDeployme
 	}
 	undo = append(undo, func() { _ = client.RemoveContainer(d.name) })
 
-	task.set("pulling", "downloading "+v2rayImage)
+	task.set("pulling", "downloading "+image)
 	deadline := time.Now().Add(pluginInstallTimeout)
 	for {
 		info, err := client.GetContainer(d.name)
@@ -379,18 +444,38 @@ func HandleGetV2RayClient(c echo.Context) error {
 		return ErrorResponse(c, http.StatusNotFound, "V2Ray client not found", err)
 	}
 
-	protocol, server := v2rayClientMetadata(info)
+	mode := v2rayClientEnv(info, v2rayEnvMode)
+	protocol := v2rayClientEnv(info, v2rayEnvProtocol)
+	server := v2rayClientEnv(info, v2rayEnvServer)
 	address, _ := v2rayClientIP(client, info)
-	return SuccessResponse(c, http.StatusOK, "V2Ray client retrieved successfully", V2RayClientDetailsResponse{
+	resp := V2RayClientDetailsResponse{
 		Name:     info.Name,
 		Comment:  info.Comment,
+		Mode:     firstNonEmptyString(mode, v2rayModeLink),
 		Protocol: protocol,
 		Server:   server,
 		Address:  address,
 		Running:  info.Running,
 		Disabled: !info.StartOnBoot,
 		Pulling:  info.DownloadingExtracting,
-	})
+	}
+	if meta, err := readV2RayMeta(client, name); err == nil {
+		resp.Skipped = meta.Skipped
+		resp.RefreshedAt = &meta.RefreshedAt
+		selected := ""
+		if info.Running {
+			selected = v2raySelectedServer(c.Request().Context(), address, meta.APISecret)
+		}
+		for _, s := range meta.Servers {
+			resp.Servers = append(resp.Servers, V2RayServer{
+				Name:     s.Name,
+				Protocol: s.Protocol,
+				Server:   s.Server,
+				Selected: selected != "" && s.Tag == selected,
+			})
+		}
+	}
+	return SuccessResponse(c, http.StatusOK, "V2Ray client retrieved successfully", resp)
 }
 
 // HandleDeleteV2RayClient removes a V2Ray client
@@ -503,19 +588,16 @@ func v2rayVPNClientInfo(info *routeros.ContainerInfo) routeros.VPNClientInfo {
 	}
 }
 
-// v2rayClientMetadata reads the protocol and server recorded in the
-// container's environment.
-func v2rayClientMetadata(info *routeros.ContainerInfo) (protocol, server string) {
+// v2rayClientEnv reads one of the values recorded in the container's
+// environment.
+func v2rayClientEnv(info *routeros.ContainerInfo, key string) string {
 	for _, pair := range strings.Split(info.Env, ",") {
-		key, value, _ := strings.Cut(strings.TrimSpace(pair), "=")
-		switch key {
-		case v2rayEnvProtocol:
-			protocol = value
-		case v2rayEnvServer:
-			server = value
+		k, v, _ := strings.Cut(strings.TrimSpace(pair), "=")
+		if k == key {
+			return v
 		}
 	}
-	return protocol, server
+	return ""
 }
 
 func v2rayClientIP(client *routeros.Client, info *routeros.ContainerInfo) (string, error) {

@@ -2,23 +2,79 @@ package proxylink
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"maps"
 )
 
-// proxyTag is the tag of the outbound built from the share link.
-const proxyTag = "proxy"
+// ProxyTag is the tag traffic is routed to: the single server's outbound, or
+// the urltest group picking among several servers.
+const ProxyTag = "proxy"
+
+// ClashAPIPort is where the gateway exposes sing-box's Clash API (when
+// GatewayOptions.ClashAPISecret is set), used to read which server urltest
+// selected.
+const ClashAPIPort = 9090
+
+// URLTestURL is probed through every server to pick the fastest one.
+const URLTestURL = "https://www.gstatic.com/generate_204"
+
+// GatewayOptions tunes GatewayConfig.
+type GatewayOptions struct {
+	// ClashAPISecret enables the Clash API on ClashAPIPort, protected by this
+	// secret. Empty leaves the API off.
+	ClashAPISecret string
+}
+
+// ServerTag is the outbound tag of the i-th (0-based) server when a gateway
+// has several servers.
+func ServerTag(i int) string {
+	return fmt.Sprintf("server-%d", i+1)
+}
 
 // GatewayConfig returns a sing-box configuration that turns the container it
 // runs in into a layer-3 gateway: traffic the router forwards to the
 // container's veth address enters a TUN device (auto_route) and leaves through
-// the proxy described by link.
+// the proxy. With several links, a urltest group keeps traffic on whichever
+// server currently answers fastest.
 //
-// Private ranges are kept off the TUN so that replies to LAN clients go back
-// out through the veth instead of looping into the proxy, and DNS sent through
-// the gateway is answered over DNS-over-TLS tunnelled through the proxy.
-func GatewayConfig(link *Link) ([]byte, error) {
-	outbound := maps.Clone(link.Outbound)
-	outbound["tag"] = proxyTag
+// Nothing a LAN client sends can leave the container directly: the only
+// direct route is for private ranges, DNS is hijacked and answered over
+// DNS-over-TLS through the proxy, and IPv6 is rejected rather than risk it
+// bypassing the IPv4-only tunnel. Private ranges are kept off the TUN so that
+// replies to LAN clients go back out through the veth instead of looping.
+func GatewayConfig(links []*Link, opts GatewayOptions) ([]byte, error) {
+	if len(links) == 0 {
+		return nil, errors.New("at least one link is required")
+	}
+
+	var outbounds []any
+	if len(links) == 1 {
+		out := maps.Clone(links[0].Outbound)
+		out["tag"] = ProxyTag
+		outbounds = append(outbounds, out)
+	} else {
+		tags := make([]string, len(links))
+		for i := range links {
+			tags[i] = ServerTag(i)
+		}
+		outbounds = append(outbounds, map[string]any{
+			"type":      "urltest",
+			"tag":       ProxyTag,
+			"outbounds": tags,
+			"url":       URLTestURL,
+			// Probing every server costs router CPU and data; a slow cadence
+			// and a wide tolerance keep switches to real latency changes.
+			"interval":  "5m",
+			"tolerance": 100,
+		})
+		for i, link := range links {
+			out := maps.Clone(link.Outbound)
+			out["tag"] = tags[i]
+			outbounds = append(outbounds, out)
+		}
+	}
+	outbounds = append(outbounds, map[string]any{"type": "direct", "tag": "direct"})
 
 	config := map[string]any{
 		"log": map[string]any{
@@ -27,8 +83,8 @@ func GatewayConfig(link *Link) ([]byte, error) {
 		},
 		"dns": map[string]any{
 			"servers": []any{
-				map[string]any{"type": "tls", "tag": "dns-remote", "server": "1.1.1.1", "detour": proxyTag},
-				// Resolves the proxy server's own hostname, outside the tunnel.
+				map[string]any{"type": "tls", "tag": "dns-remote", "server": "1.1.1.1", "detour": ProxyTag},
+				// Resolves the proxy servers' own hostnames, outside the tunnel.
 				map[string]any{"type": "tls", "tag": "dns-bootstrap", "server": "1.1.1.1"},
 			},
 			"final":    "dns-remote",
@@ -54,23 +110,31 @@ func GatewayConfig(link *Link) ([]byte, error) {
 					"192.168.0.0/16",
 					"224.0.0.0/4",
 				},
-				"stack": "gvisor",
+				// The kernel stack avoids running a userspace TCP/IP stack
+				// on the router's CPU.
+				"stack": "system",
 			},
 		},
-		"outbounds": []any{
-			outbound,
-			map[string]any{"type": "direct", "tag": "direct"},
-		},
+		"outbounds": outbounds,
 		"route": map[string]any{
 			"rules": []any{
 				map[string]any{"action": "sniff"},
 				map[string]any{"protocol": "dns", "action": "hijack-dns"},
+				map[string]any{"ip_version": 6, "action": "reject"},
 				map[string]any{"ip_is_private": true, "outbound": "direct"},
 			},
-			"final":                   proxyTag,
+			"final":                   ProxyTag,
 			"auto_detect_interface":   true,
 			"default_domain_resolver": "dns-bootstrap",
 		},
+	}
+	if opts.ClashAPISecret != "" {
+		config["experimental"] = map[string]any{
+			"clash_api": map[string]any{
+				"external_controller": fmt.Sprintf("0.0.0.0:%d", ClashAPIPort),
+				"secret":              opts.ClashAPISecret,
+			},
+		}
 	}
 
 	return json.MarshalIndent(config, "", "  ")

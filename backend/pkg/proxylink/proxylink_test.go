@@ -264,7 +264,7 @@ func TestGatewayConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	raw, err := GatewayConfig(link)
+	raw, err := GatewayConfig([]*Link{link}, GatewayOptions{})
 	if err != nil {
 		t.Fatalf("GatewayConfig: %v", err)
 	}

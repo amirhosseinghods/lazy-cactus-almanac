@@ -151,6 +151,7 @@ func RegisterRoutes(e *echo.Echo) {
 	vpnGroup.GET("/v2ray/client/status/:name", handler.HandleGetV2RayClientStatus)
 	vpnGroup.GET("/v2ray/client/:name", handler.HandleGetV2RayClient)
 	vpnGroup.DELETE("/v2ray/client/:name", handler.HandleDeleteV2RayClient)
+	vpnGroup.POST("/v2ray/client/:name/refresh", handler.HandleRefreshV2RaySubscription)
 	vpnGroup.GET("/servers", handler.HandleListVPNServers)
 	vpnGroup.GET("/ovpn/server/:name", handler.HandleGetOvpnServerDetails)
 	vpnGroup.POST("/ovpn/server", handler.HandleCreateOvpnServer)
