@@ -25,7 +25,12 @@
       "deleteFailed": "حذف کلاینت ناموفق بود",
       "deleteFailedDescription": "حذف کلاینت ناموفق بود.",
       "deletedNamed": "کلاینت «{{name}}» حذف شد",
-      "wgUpdated": "کلاینت WireGuard «{{name}}» به‌روزرسانی شد"
+      "wgUpdated": "کلاینت WireGuard «{{name}}» به‌روزرسانی شد",
+      "v2rayCreating": "در حال راه‌اندازی کلاینت V2Ray «{{name}}»",
+      "v2rayCreatingDescription": "در حال دانلود sing-box روی روتر. ممکن است چند دقیقه طول بکشد.",
+      "v2rayAdded": "کلاینت V2Ray «{{name}}» آماده است",
+      "v2rayFailed": "راه‌اندازی کلاینت V2Ray ناموفق بود",
+      "addV2rayFailedDescription": "افزودن کلاینت V2Ray ناموفق بود."
     },
     "title": "کلاینت وی پی ان پنهان‌سازی استارلینک",
     "description": "کلاینت‌های وی پی ان که IP اینترنت استارلینک را پنهان می‌کنند.",
@@ -47,7 +52,9 @@
       "wgTitle": "حذف کلاینت WireGuard",
       "l2tpTitle": "حذف کلاینت L2TP",
       "wgDescription": "«{{name}}» از این روتر حذف شود؟ همتاها و آدرس IP مرتبط هم حذف می‌شوند. این کار برگشت‌پذیر نیست.",
-      "l2tpDescription": "«{{name}}» از این روتر حذف شود؟ این کار برگشت‌پذیر نیست."
+      "l2tpDescription": "«{{name}}» از این روتر حذف شود؟ این کار برگشت‌پذیر نیست.",
+      "v2rayTitle": "حذف کلاینت V2Ray",
+      "v2rayDescription": "«{{name}}» از این روتر حذف شود؟ کانتینر، اینترفیس و پیکربندی آن هم حذف می‌شوند. این کار برگشت‌پذیر نیست."
     },
     "form": {
       "editTitle": "ویرایش کلاینت وی پی ان",
@@ -405,7 +412,16 @@
     "dropConf": "فایل ‎.conf مربوط به WireGuard را اینجا رها کنید یا برای انتخاب کلیک کنید",
     "dropHint": "محتوای فایل در ویرایشگر زیر بارگذاری می‌شود.",
     "configText": "متن پیکربندی",
-    "config": "پیکربندی"
+    "config": "پیکربندی",
+    "v2ray": {
+      "link": "لینک اشتراک",
+      "linkPlaceholder": "vless://… vmess://… trojan://… ss://… hy2://… tuic://…",
+      "linkHint": "لینکی را که سرویس‌دهنده به شما داده است اینجا بچسبانید. VLESS (همراه با REALITY)، VMess، Trojan، Shadowsocks، Hysteria2 و TUIC پشتیبانی می‌شوند.",
+      "detected": "پروتکل شناسایی‌شده: {{protocol}}",
+      "linkRequired": "یک لینک اشتراک بچسبانید.",
+      "unsupported": "لینک پشتیبانی نمی‌شود. باید با vless://، vmess://، trojan://، ss://، hysteria2://، hy2:// یا tuic:// شروع شود.",
+      "containerNote": "این کلاینت به‌صورت یک کانتینر کوچک روی روتر اجرا می‌شود. راه‌اندازی اول، ایمیج sing-box را دانلود می‌کند و ممکن است چند دقیقه طول بکشد. بسته‌ی container باید روی روتر فعال باشد."
+    }
   },
   "addServer": {
     "title": "سرور وی پی ان جدید",

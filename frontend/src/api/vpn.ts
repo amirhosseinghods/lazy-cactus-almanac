@@ -579,6 +579,62 @@ export async function addL2TPClient(
   });
 }
 
+export interface AddV2RayClientRequest {
+  link: string;
+  comment?: string;
+  disabled?: boolean;
+}
+
+export interface V2RayClientTaskStatus {
+  name: string;
+  phase: string;
+  message: string;
+  done: boolean;
+  failed: boolean;
+}
+
+export async function addV2RayClient(
+  creds: VPNCredentials,
+  body: AddV2RayClientRequest,
+  signal?: AbortSignal,
+): Promise<V2RayClientTaskStatus> {
+  return apiRequest<V2RayClientTaskStatus>('/api/vpn/v2ray/client', {
+    method: 'POST',
+    headers: authHeaders(creds),
+    body: JSON.stringify(body),
+    signal,
+  });
+}
+
+export async function fetchV2RayClientStatus(
+  creds: VPNCredentials,
+  name: string,
+  signal?: AbortSignal,
+): Promise<V2RayClientTaskStatus> {
+  return apiRequest<V2RayClientTaskStatus>(
+    `/api/vpn/v2ray/client/status/${encodeURIComponent(name)}`,
+    {
+      method: 'GET',
+      headers: authHeaders(creds),
+      cache: 'no-store',
+      signal,
+    },
+  );
+}
+
+export async function deleteV2RayClient(
+  creds: VPNCredentials,
+  name: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  await apiRequest<void>(`/api/vpn/v2ray/client/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+    headers: authHeaders(creds),
+    cache: 'no-store',
+    signal,
+  });
+}
+
 export async function fetchL2TPClientDetails(
   creds: VPNCredentials,
   name: string,

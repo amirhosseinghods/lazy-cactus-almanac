@@ -79,4 +79,5 @@ export const getProtocolOptions = (): VPNProtocol[] => [
   'pptp',
   'sstp',
   'ikev2',
+  'v2ray',
 ];

@@ -435,7 +435,7 @@ test.describe('WAN VPN clients section', () => {
     await expect(dialog).toBeVisible();
 
     const types = dialog.getByRole('radiogroup', { name: 'VPN client type' });
-    await expect(types.getByRole('radio')).toHaveCount(4);
+    await expect(types.getByRole('radio')).toHaveCount(5);
     await expect(types.getByRole('radio', { name: 'L2TP' })).toBeChecked();
     await expect(dialog.getByLabel('Connect to')).toBeVisible();
 

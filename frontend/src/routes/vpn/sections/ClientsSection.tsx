@@ -4,12 +4,16 @@ import { Card, ConfirmDialog, Stack, useToast } from '@nasnet/ui';
 import {
   ApiError,
   addL2TPClient,
+  addV2RayClient,
   createWireguardClient,
   deleteL2TPClient,
+  deleteV2RayClient,
   deleteWireguardInterface,
+  fetchV2RayClientStatus,
   importWireguardConfig,
   updateL2TPClient,
   type AddL2TPClientRequest,
+  type AddV2RayClientRequest,
   type CreateWireguardClientRequest,
   type CreateWireguardClientResponse,
   type ImportWireguardConfigRequest,
@@ -28,6 +32,10 @@ import { PAGE_SIZE } from '../utils';
 import { summarizeWireguardImport } from '../wgClientSummary';
 import { ClientsTable } from './ClientsTable';
 import { SectionHeader } from './SectionHeader';
+
+const V2RAY_POLL_INTERVAL_MS = 3000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const matches = (c: VPNClient, q: string) =>
   c.name.toLowerCase().includes(q) ||
@@ -139,6 +147,60 @@ export function ClientsSection({
     onChanged();
   };
 
+  const onSubmitV2Ray = async (req: AddV2RayClientRequest) => {
+    if (!creds) {
+      toast.notify({ title: t('shared.notConnected'), tone: 'danger' });
+      return;
+    }
+    const fail = (err: unknown) => {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : t('clients.toast.addV2rayFailedDescription');
+      toast.notify({ title: t('clients.toast.v2rayFailed'), description: message, tone: 'danger' });
+    };
+    let name: string;
+    try {
+      ({ name } = await addV2RayClient(creds, req));
+    } catch (err) {
+      fail(err);
+      throw err;
+    }
+    // The router now downloads the sing-box image in the background; close
+    // the dialog and report progress instead of blocking on it.
+    setAdding(false);
+    toast.notify({
+      title: t('clients.toast.v2rayCreating', { name: req.comment || name }),
+      description: t('clients.toast.v2rayCreatingDescription'),
+      tone: 'info',
+      durationMs: 8000,
+    });
+    onChanged();
+    for (;;) {
+      await sleep(V2RAY_POLL_INTERVAL_MS);
+      let status;
+      try {
+        status = await fetchV2RayClientStatus(creds, name);
+      } catch (err) {
+        fail(err);
+        return;
+      }
+      if (!status.done) continue;
+      if (status.failed) {
+        fail(new Error(status.message));
+      } else {
+        toast.notify({
+          title: t('clients.toast.v2rayAdded', { name: req.comment || name }),
+          tone: 'success',
+        });
+      }
+      onChanged();
+      return;
+    }
+  };
+
   const onSubmitEdit = async (req: UpdateL2TPClientRequest) => {
     if (!creds || !editing) {
       toast.notify({ title: t('shared.notConnected'), tone: 'danger' });
@@ -177,6 +239,8 @@ export function ClientsSection({
     try {
       if (target.protocol === 'wireguard') {
         await deleteWireguardInterface(creds, target.name);
+      } else if (target.protocol === 'v2ray') {
+        await deleteV2RayClient(creds, target.name);
       } else {
         await deleteL2TPClient(creds, target.id);
       }
@@ -238,6 +302,7 @@ export function ClientsSection({
           onSubmitL2TP={onSubmitL2TP}
           onSubmitWireguard={onSubmitWireguard}
           onSubmitWireguardImport={onSubmitWireguardImport}
+          onSubmitV2Ray={onSubmitV2Ray}
         />
       ) : null}
       {editing && editing.protocol === 'l2tp' ? (
@@ -269,13 +334,19 @@ export function ClientsSection({
         title={
           pendingDelete?.protocol === 'wireguard'
             ? t('clients.delete.wgTitle')
-            : t('clients.delete.l2tpTitle')
+            : pendingDelete?.protocol === 'v2ray'
+              ? t('clients.delete.v2rayTitle')
+              : t('clients.delete.l2tpTitle')
         }
         description={
           pendingDelete
             ? pendingDelete.protocol === 'wireguard'
               ? t('clients.delete.wgDescription', { name: pendingDelete.name })
-              : t('clients.delete.l2tpDescription', { name: pendingDelete.name })
+              : pendingDelete.protocol === 'v2ray'
+                ? t('clients.delete.v2rayDescription', {
+                    name: pendingDelete.comment || pendingDelete.name,
+                  })
+                : t('clients.delete.l2tpDescription', { name: pendingDelete.name })
             : undefined
         }
         confirmLabel={deleteSubmitting ? t('shared.deleting') : t('shared.delete')}

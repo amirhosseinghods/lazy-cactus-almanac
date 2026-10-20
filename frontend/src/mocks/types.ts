@@ -145,7 +145,7 @@ export interface WirelessClient {
   connectedFor: string;
 }
 
-export type VPNProtocol = 'wireguard' | 'l2tp' | 'openvpn' | 'pptp' | 'sstp' | 'ikev2';
+export type VPNProtocol = 'wireguard' | 'l2tp' | 'openvpn' | 'pptp' | 'sstp' | 'ikev2' | 'v2ray';
 
 export interface VPNClient {
   id: string;

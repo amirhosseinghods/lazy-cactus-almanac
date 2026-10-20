@@ -120,11 +120,30 @@ export async function buildTopology(
 
   const vpnUpstream =
     foreignWans.find((w) => w.running) ?? foreignWans[0] ?? wans.find((w) => w.running) ?? wans[0];
-  const vpnTunnels = ifaces.filter((i) => {
-    if (!VPN_INTERFACE_TYPES.has(i.type) || i.type.endsWith('-in')) return false;
-    const name = i.name.toLowerCase();
-    return name.includes('wg-client') || name.includes('l2tp-client');
-  });
+  const vpnTunnels = [
+    ...ifaces
+      .filter((i) => {
+        if (!VPN_INTERFACE_TYPES.has(i.type) || i.type.endsWith('-in')) return false;
+        const name = i.name.toLowerCase();
+        return name.includes('wg-client') || name.includes('l2tp-client');
+      })
+      .map((i) => ({
+        name: i.name,
+        comment: i.comment,
+        running: !!i.running,
+        protocol: TYPE_TO_PROTOCOL[i.type],
+      })),
+    // V2Ray clients are containers, not RouterOS interfaces, so they only
+    // show up in the VPN client list.
+    ...vpnClients
+      .filter((c) => c.type === 'v2ray')
+      .map((c) => ({
+        name: c.name,
+        comment: c.comment,
+        running: c.running,
+        protocol: 'v2ray' as VPNProtocol,
+      })),
+  ];
   const isRouted = (name: string) => foreignGateway === name;
   vpnTunnels.forEach((vpn) => {
     const id = `vpn_${vpn.name}`;
@@ -132,7 +151,7 @@ export async function buildTopology(
       id,
       kind: 'vpn',
       label: vpn.comment?.trim() ? vpn.comment : vpn.name,
-      protocol: TYPE_TO_PROTOCOL[vpn.type],
+      protocol: vpn.protocol,
       pingTime: pingByName.get(vpn.name),
     });
     if (vpnUpstream) {

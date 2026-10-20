@@ -9,6 +9,7 @@ const TYPE_TO_PROTOCOL: Record<string, VPNProtocol> = {
   'pptp-in': 'pptp',
   'ovpn-out': 'openvpn',
   'ovpn-in': 'openvpn',
+  v2ray: 'v2ray',
 };
 
 function typeToProtocol(type: string): VPNProtocol {

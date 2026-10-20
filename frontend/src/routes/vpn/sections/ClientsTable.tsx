@@ -217,19 +217,25 @@ export function ClientsTable({ rows, totalRows, creds, onToggled, onEdit, onDele
           key: 'actions',
           header: t('shared.actions'),
           render: (c: VPNClient) => {
-            if (c.protocol !== 'l2tp' && c.protocol !== 'wireguard') return null;
+            if (c.protocol !== 'l2tp' && c.protocol !== 'wireguard' && c.protocol !== 'v2ray') {
+              return null;
+            }
+            // V2Ray clients are recreated from a new link rather than edited.
+            const editable = c.protocol !== 'v2ray';
             return (
               <span style={{ display: 'inline-flex', gap: 8 }}>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={!creds}
-                  title={t('shared.editNamed', { name: c.name })}
-                  aria-label={t('shared.editNamed', { name: c.name })}
-                  onClick={() => onEdit(c)}
-                >
-                  <Pencil size={14} aria-hidden />
-                </Button>
+                {editable ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={!creds}
+                    title={t('shared.editNamed', { name: c.name })}
+                    aria-label={t('shared.editNamed', { name: c.name })}
+                    onClick={() => onEdit(c)}
+                  >
+                    <Pencil size={14} aria-hidden />
+                  </Button>
+                ) : null}
                 <Button
                   size="sm"
                   variant="danger"

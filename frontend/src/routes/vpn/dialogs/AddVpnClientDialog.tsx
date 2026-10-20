@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Cable, Globe, KeyRound, Shield, Sparkles } from 'lucide-react';
+import { Cable, Globe, KeyRound, Rocket, Shield, Sparkles } from 'lucide-react';
 import {
   Button,
   Dialog,
@@ -21,18 +21,20 @@ import {
 } from '../../easy-config/steps/ipmask/HyperSpeedClaimDialog';
 import type {
   AddL2TPClientRequest,
+  AddV2RayClientRequest,
   CreateWireguardClientRequest,
   ImportWireguardConfigRequest,
 } from '../../../api';
 import { isCIDR, isPort, isWireGuardKey, validateHostOrIp } from '../../../utils/validators';
 
-export type AddVpnType = 'l2tp' | 'wireguard';
+export type AddVpnType = 'l2tp' | 'wireguard' | 'v2ray';
 
 type AddVpnTileType = AddVpnType | 'openvpn' | 'sstp';
 
 const TYPE_TILES: Array<VpnTypeTile<AddVpnTileType>> = [
   { value: 'l2tp', label: 'L2TP', icon: <Cable size={26} strokeWidth={1.75} /> },
   { value: 'wireguard', label: 'WireGuard', icon: <Shield size={26} strokeWidth={1.75} /> },
+  { value: 'v2ray', label: 'V2Ray', icon: <Rocket size={26} strokeWidth={1.75} /> },
   {
     value: 'openvpn',
     label: 'OpenVPN',
@@ -62,6 +64,8 @@ interface Draft {
   persistentKeepalive: string;
   // WireGuard import-mode
   configText: string;
+  // V2Ray share link
+  v2rayLink: string;
 }
 
 const EMPTY_DRAFT: Draft = {
@@ -82,7 +86,24 @@ const EMPTY_DRAFT: Draft = {
   presharedKey: '',
   persistentKeepalive: '',
   configText: '',
+  v2rayLink: '',
 };
+
+const V2RAY_SCHEMES: Record<string, string> = {
+  vless: 'VLESS',
+  vmess: 'VMess',
+  trojan: 'Trojan',
+  ss: 'Shadowsocks',
+  hysteria2: 'Hysteria2',
+  hy2: 'Hysteria2',
+  tuic: 'TUIC',
+};
+
+/** Protocol label for a share link, or null when its scheme isn't supported. */
+export function detectV2RayProtocol(link: string): string | null {
+  const match = /^([a-z0-9]+):\/\//i.exec(link.trim());
+  return match ? (V2RAY_SCHEMES[match[1].toLowerCase()] ?? null) : null;
+}
 
 type WgMode = 'create' | 'import';
 
@@ -91,6 +112,7 @@ interface Props {
   onSubmitL2TP: (req: AddL2TPClientRequest) => Promise<void>;
   onSubmitWireguard: (req: CreateWireguardClientRequest) => Promise<void>;
   onSubmitWireguardImport: (req: ImportWireguardConfigRequest) => Promise<void>;
+  onSubmitV2Ray: (req: AddV2RayClientRequest) => Promise<void>;
 }
 
 export function AddVpnClientDialog({
@@ -98,6 +120,7 @@ export function AddVpnClientDialog({
   onSubmitL2TP,
   onSubmitWireguard,
   onSubmitWireguardImport,
+  onSubmitV2Ray,
 }: Props) {
   const { t } = useTranslation('vpn');
   const [type, setType] = useState<AddVpnType>('l2tp');
@@ -150,6 +173,15 @@ export function AddVpnClientDialog({
       base.configText = draft.configText.trim() === '' ? t('addClient.errors.configText') : null;
     }
 
+    if (type === 'v2ray') {
+      base.v2rayLink =
+        draft.v2rayLink.trim() === ''
+          ? t('addClient.v2ray.linkRequired')
+          : detectV2RayProtocol(draft.v2rayLink)
+            ? null
+            : t('addClient.v2ray.unsupported');
+    }
+
     return base;
   }, [type, wgMode, draft, t]);
 
@@ -198,6 +230,12 @@ export function AddVpnClientDialog({
         await onSubmitWireguardImport({
           config: draft.configText,
           comment: draft.comment.trim() || undefined,
+        });
+      } else if (type === 'v2ray') {
+        await onSubmitV2Ray({
+          link: draft.v2rayLink.trim(),
+          comment: draft.comment.trim() || undefined,
+          disabled: draft.disabled,
         });
       }
     } catch (err) {
@@ -294,6 +332,16 @@ export function AddVpnClientDialog({
               />
             )}
           </>
+        ) : null}
+
+        {type === 'v2ray' ? (
+          <V2RayFields
+            draft={draft}
+            set={set}
+            errors={errors}
+            touched={touched}
+            markTouched={markTouched}
+          />
         ) : null}
 
         {type === 'wireguard' && wgMode === 'import' ? null : (
@@ -612,6 +660,43 @@ function WireguardImportFields({ draft, set, errors, touched, markTouched }: Wir
           ) : null}
         </Label>
       </FieldRow>
+    </>
+  );
+}
+
+function V2RayFields({ draft, set, errors, touched, markTouched }: WireguardFieldsProps) {
+  const { t } = useTranslation('vpn');
+  const protocol = detectV2RayProtocol(draft.v2rayLink);
+  return (
+    <>
+      <FieldRow>
+        <Label>
+          <span>{t('addClient.v2ray.link')}</span>
+          <Textarea
+            value={draft.v2rayLink}
+            onChange={(e) => set('v2rayLink', e.target.value)}
+            onBlur={() => markTouched('v2rayLink')}
+            rows={4}
+            placeholder={t('addClient.v2ray.linkPlaceholder')}
+            aria-label={t('addClient.v2ray.link')}
+            dir="ltr"
+            spellCheck={false}
+            autoComplete="off"
+            aria-invalid={touched.v2rayLink && !!errors.v2rayLink}
+            style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}
+          />
+          {touched.v2rayLink && errors.v2rayLink ? (
+            <FormError>{errors.v2rayLink}</FormError>
+          ) : protocol ? (
+            <span>{t('addClient.v2ray.detected', { protocol })}</span>
+          ) : (
+            <span>{t('addClient.v2ray.linkHint')}</span>
+          )}
+        </Label>
+      </FieldRow>
+      <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--font-sm)' }}>
+        {t('addClient.v2ray.containerNote')}
+      </p>
     </>
   );
 }

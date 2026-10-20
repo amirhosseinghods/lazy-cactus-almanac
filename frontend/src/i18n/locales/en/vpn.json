@@ -25,7 +25,12 @@
       "deleteFailed": "Failed to delete client",
       "deleteFailedDescription": "Failed to delete client.",
       "deletedNamed": "Client \"{{name}}\" deleted",
-      "wgUpdated": "WireGuard client \"{{name}}\" updated"
+      "wgUpdated": "WireGuard client \"{{name}}\" updated",
+      "v2rayCreating": "Setting up V2Ray client \"{{name}}\"",
+      "v2rayCreatingDescription": "Downloading sing-box to the router. This can take a few minutes.",
+      "v2rayAdded": "V2Ray client \"{{name}}\" is ready",
+      "v2rayFailed": "Failed to set up V2Ray client",
+      "addV2rayFailedDescription": "Failed to add V2Ray client."
     },
     "title": "Starlink Masking VPN Client",
     "description": "VPN clients that conceal the Starlink IP.",
@@ -47,7 +52,9 @@
       "wgTitle": "Delete WireGuard client",
       "l2tpTitle": "Delete L2TP client",
       "wgDescription": "Remove \"{{name}}\" from this router? Associated peers and IP address will also be removed. This cannot be undone.",
-      "l2tpDescription": "Remove \"{{name}}\" from this router? This cannot be undone."
+      "l2tpDescription": "Remove \"{{name}}\" from this router? This cannot be undone.",
+      "v2rayTitle": "Delete V2Ray client",
+      "v2rayDescription": "Remove \"{{name}}\" from this router? Its container, interface and configuration will also be removed. This cannot be undone."
     },
     "form": {
       "editTitle": "Edit VPN client",
@@ -405,7 +412,16 @@
     "dropConf": "Drop your WireGuard .conf file here, or click to browse",
     "dropHint": "The file contents are loaded into the editor below.",
     "configText": "Config text",
-    "config": "Config"
+    "config": "Config",
+    "v2ray": {
+      "link": "Share link",
+      "linkPlaceholder": "vless://… vmess://… trojan://… ss://… hy2://… tuic://…",
+      "linkHint": "Paste the link your provider gave you. VLESS (incl. REALITY), VMess, Trojan, Shadowsocks, Hysteria2 and TUIC are supported.",
+      "detected": "Detected protocol: {{protocol}}",
+      "linkRequired": "Paste a share link.",
+      "unsupported": "Unsupported link. It must start with vless://, vmess://, trojan://, ss://, hysteria2://, hy2:// or tuic://.",
+      "containerNote": "The client runs as a small container on the router. The first setup downloads the sing-box image and can take a few minutes. The container package must be enabled on the router."
+    }
   },
   "addServer": {
     "title": "New VPN server",
