@@ -1421,6 +1421,16 @@ remove_empty_tar_dir() {
     >/dev/null 2>&1 || true
 }
 
+# Once the container is running from its unpacked root dir, the image tar
+# (and any left by earlier installs) is dead weight on routers with 128MB of
+# flash.
+remove_installed_tars() {
+  (( DRY_RUN )) && return 0
+  ros_cmd "/file/remove [find where (name~\"(^|/)${TAR_SUBDIR}/${ASSET_PREFIX}-\") and (name~\"\\\\.tar\\\$\")]" \
+    >/dev/null 2>&1 || true
+  remove_empty_tar_dir
+}
+
 remove_remote_file() {
   local name="$1"
   ros_cmd "/file/remove [find name=\"${name}\"]" >/dev/null 2>&1 || true
@@ -1830,6 +1840,7 @@ main() {
   configure_network
   deploy_container
   start_and_poll
+  remove_installed_tars
 
   local final_port
   final_port="$(ros_cmd "/ip/firewall/nat/print detail where comment=\"${COMMENT_TAG}-dstnat\"" 2>/dev/null \
