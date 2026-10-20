@@ -474,3 +474,68 @@ export async function setVPNBypass(
     signal,
   });
 }
+
+export interface IranIPListState {
+  entries: number;
+  managedByPanel: boolean;
+  updatedAt?: string;
+  sources: string[];
+}
+
+export interface IranIPUpdateResult {
+  total: number;
+  added: number;
+  removed: number;
+  updatedAt: string;
+}
+
+export async function fetchIranIPList(
+  creds: SystemCredentials,
+  signal?: AbortSignal,
+): Promise<IranIPListState> {
+  return apiRequest<IranIPListState>('/api/route/iran-ip', {
+    method: 'GET',
+    headers: authHeaders(creds),
+    cache: 'no-store',
+    signal,
+  });
+}
+
+export async function updateIranIPList(
+  creds: SystemCredentials,
+  signal?: AbortSignal,
+): Promise<IranIPUpdateResult> {
+  return apiRequest<IranIPUpdateResult>('/api/route/iran-ip/update', {
+    method: 'POST',
+    headers: authHeaders(creds),
+    signal,
+  });
+}
+
+export async function fetchDNSLeakGuard(
+  creds: SystemCredentials,
+  signal?: AbortSignal,
+): Promise<{ enabled: boolean }> {
+  return apiRequest<{ enabled: boolean }>('/api/dns/leak-guard', {
+    method: 'GET',
+    headers: authHeaders(creds),
+    cache: 'no-store',
+    signal,
+  });
+}
+
+export async function setDNSLeakGuard(
+  creds: SystemCredentials,
+  enabled: boolean,
+  signal?: AbortSignal,
+): Promise<{ enabled: boolean }> {
+  return apiRequest<{ enabled: boolean }>('/api/dns/leak-guard', {
+    method: 'PUT',
+    headers: {
+      ...authHeaders(creds),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ enabled }),
+    signal,
+  });
+}

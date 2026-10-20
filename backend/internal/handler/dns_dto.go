@@ -319,3 +319,13 @@ func ToStaticDNSResponse(entry *routeros.StaticDNSEntry) StaticDNSResponse {
 		Disabled: entry.Disabled,
 	}
 }
+
+// SetDNSLeakGuardRequest turns DNS leak protection on or off.
+type SetDNSLeakGuardRequest struct {
+	Enabled *bool `json:"enabled" example:"true"`
+}
+
+// DNSLeakGuardResponse describes DNS leak protection.
+type DNSLeakGuardResponse struct {
+	Enabled bool `json:"enabled"`
+}

@@ -330,6 +330,9 @@ func refreshAllV2RaySubscriptions(config routeros.ConnectionConfig) {
 		log.Printf("[v2ray-refresh %s] cannot connect: %v", config.Address, err)
 		return
 	}
+	if err := refreshIranIPListIfDue(client); err != nil {
+		log.Printf("[iran-ip-refresh %s] %v", config.Address, err)
+	}
 	containers, err := client.ListContainers()
 	if err != nil {
 		log.Printf("[v2ray-refresh %s] cannot list containers: %v", config.Address, err)

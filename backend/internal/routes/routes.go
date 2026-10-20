@@ -117,6 +117,8 @@ func RegisterRoutes(e *echo.Echo) {
 	dnsGroup := e.Group("/api/dns")
 	dnsGroup.Use(middleware.RouterOSAuth)
 	dnsGroup.GET("/info", handler.HandleGetDNSInfo)
+	dnsGroup.GET("/leak-guard", handler.HandleGetDNSLeakGuard)
+	dnsGroup.PUT("/leak-guard", handler.HandleSetDNSLeakGuard)
 	dnsGroup.GET("/list", handler.HandleListDNSForwarders)
 	dnsGroup.PUT("/info", handler.HandleUpdateDNS)
 	dnsGroup.GET("/suggest", handler.HandleSuggestDNS)
@@ -201,6 +203,8 @@ func RegisterRoutes(e *echo.Echo) {
 	routeGroup.PUT("/foreign-gateway", handler.HandleUpdateForeignGateway)
 	routeGroup.GET("/vpn-bypass", handler.HandleGetVPNBypass)
 	routeGroup.PUT("/vpn-bypass", handler.HandleSetVPNBypass)
+	routeGroup.GET("/iran-ip", handler.HandleGetIranIPList)
+	routeGroup.POST("/iran-ip/update", handler.HandleUpdateIranIPList)
 
 	diagGroup := e.Group("/api/diag")
 	diagGroup.Use(middleware.RouterOSAuth)

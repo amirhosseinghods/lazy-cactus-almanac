@@ -528,5 +528,23 @@
     "enabledToast": "VPN bypassed: traffic now goes directly over Starlink",
     "disabledToast": "VPN restored",
     "failed": "Failed to change the VPN bypass"
+  },
+  "privacy": {
+    "title": "Split routing and DNS privacy",
+    "description": "Keep DNS lookups from leaking through the domestic link, and keep the list of Iranian addresses that Split networks send over the domestic modem up to date.",
+    "guardToggle": "DNS leak protection",
+    "guardHint": "If the VPN or Starlink route to the DNS servers drops, lookups are dropped instead of leaking through the Iranian ISP.",
+    "guardOn": "DNS leak protection is on",
+    "guardOff": "DNS leak protection is off",
+    "guardFailed": "Failed to change DNS leak protection",
+    "listSummary_one": "Iranian IP list: {{value}} range",
+    "listSummary_other": "Iranian IP list: {{value}} ranges",
+    "listUpdatedAt": "updated {{date}} (refreshed weekly)",
+    "listLegacy": "from the setup wizard's source",
+    "listUpdate": "Update from GitHub",
+    "listUpdating": "Updating…",
+    "listUpdated": "Iranian IP list updated: {{total}} ranges ({{added}} added, {{removed}} removed)",
+    "listFailed": "Failed to update the Iranian IP list",
+    "listHint": "Merged from Chocolate4U/Iran-v2ray-rules (GeoIP) and ipverse/rir-ip (registry), downloaded by the panel over Starlink. Only the differences are applied."
   }
 }

@@ -36,6 +36,7 @@ import { summarizeWireguardImport } from '../wgClientSummary';
 import { ClientsTable } from './ClientsTable';
 import { SectionHeader } from './SectionHeader';
 import { VpnBypassCard } from './VpnBypassCard';
+import { SplitPrivacyCard } from './SplitPrivacyCard';
 
 const V2RAY_POLL_INTERVAL_MS = 2000;
 
@@ -296,6 +297,7 @@ export function ClientsSection({
         onChanged={onChanged}
         labelFor={(name) => clients.find((c) => c.name === name)?.comment || name}
       />
+      <SplitPrivacyCard creds={creds} />
       <Card>
         <SectionHeader
           title={t('clients.title')}
