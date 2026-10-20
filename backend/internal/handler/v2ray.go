@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 
 	"nasnet-panel/pkg/proxylink"
 	"nasnet-panel/pkg/routeros"
+	"nasnet-panel/pkg/sftp"
 	"nasnet-panel/pkg/utils"
 
 	"github.com/labstack/echo/v4"
@@ -26,16 +28,15 @@ const (
 
 	v2rayNamePrefix = "v2ray-"
 	v2rayVethPrefix = "veth-"
-	// The default image is the trimmed sing-box build from
-	// docker/sing-box-slim. The official image (~90MB extracted) does not fit
-	// on routers with 128MB of flash.
-	v2rayDefaultImage = "ghcr.io/amirhosseinghods/sing-box-slim:1.14.3"
-	v2rayImageEnv     = "NASNET_V2RAY_IMAGE"
-	v2rayConfigDir    = "/etc/sing-box"
-	v2raySubnetBase   = "192.168.50."
-	v2raySubnetMask   = "/24"
-	v2rayGatewayIP    = "192.168.50.1"
-	v2rayFirstHostIP  = 10
+	// Setting NASNET_V2RAY_IMAGE makes RouterOS pull that image from a
+	// registry instead of loading the trimmed sing-box tar the panel stages
+	// (see v2ray_image.go).
+	v2rayImageEnv    = "NASNET_V2RAY_IMAGE"
+	v2rayConfigDir   = "/etc/sing-box"
+	v2raySubnetBase  = "192.168.50."
+	v2raySubnetMask  = "/24"
+	v2rayGatewayIP   = "192.168.50.1"
+	v2rayFirstHostIP = 10
 
 	// Container env keys carrying display metadata, so listing clients needs
 	// no extra round trips to read the config file back.
@@ -55,13 +56,10 @@ const (
 	v2rayMemoryMaxBytes  = 96 << 20
 )
 
-// v2rayImage returns the sing-box image V2Ray clients run, overridable with
-// NASNET_V2RAY_IMAGE for routers with room for (or a mirror of) another build.
-func v2rayImage() string {
-	if image := strings.TrimSpace(os.Getenv(v2rayImageEnv)); image != "" {
-		return image
-	}
-	return v2rayDefaultImage
+// v2rayRemoteImage returns the registry image to pull when one is
+// configured, or "" to load the staged tar.
+func v2rayRemoteImage() string {
+	return strings.TrimSpace(os.Getenv(v2rayImageEnv))
 }
 
 // v2rayRoutingComment tags the mangle rule that sends a V2Ray container's own
@@ -217,12 +215,14 @@ func HandleAddV2RayClient(c echo.Context) error {
 		meta:     meta,
 		config:   string(config),
 		disabled: req.Disabled != nil && *req.Disabled,
+		upload:   v2rayImageUpload{sftp: v2raySFTPConfig(c)},
 	})
 
 	return SuccessResponse(c, http.StatusAccepted, "V2Ray client creation started", task.snapshot(name))
 }
 
 type v2rayDeployment struct {
+	upload   v2rayImageUpload
 	name     string
 	comment  string
 	mode     string
@@ -241,6 +241,21 @@ func createV2RayClient(client *routeros.Client, task *v2rayTask, d v2rayDeployme
 			undo[i]()
 		}
 		task.finish(true, fmt.Sprintf("%s: %v", msg, err))
+	}
+
+	// Fetch the image before touching the router's configuration: it is the
+	// step most likely to fail, and it checks there is room on the router.
+	remoteImage := v2rayRemoteImage()
+	imageFile := ""
+	if remoteImage == "" {
+		task.set("downloading", "downloading sing-box")
+		path, err := stageV2RayImage(context.Background(), client, d.upload, d.name)
+		if err != nil {
+			fail("failed to prepare the sing-box image", err)
+			return
+		}
+		imageFile = path
+		undo = append(undo, func() { _ = client.DeleteFile(imageFile) })
 	}
 
 	veth := v2rayVethPrefix + d.name
@@ -305,7 +320,6 @@ func createV2RayClient(client *routeros.Client, task *v2rayTask, d v2rayDeployme
 	undo = append(undo, func() { _ = client.RemoveContainerMount(d.name) })
 
 	task.set("creating_container", "creating container "+d.name)
-	image := v2rayImage()
 	rootDir, err := preparePluginRootDir(client, d.name)
 	if err != nil {
 		fail("failed to prepare container directory", err)
@@ -315,7 +329,8 @@ func createV2RayClient(client *routeros.Client, task *v2rayTask, d v2rayDeployme
 		Name:        d.name,
 		Interface:   veth,
 		RootDir:     rootDir,
-		RemoteImage: image,
+		RemoteImage: remoteImage,
+		File:        imageFile,
 		Hostname:    d.name,
 		Env: joinEnvPairs(map[string]string{
 			v2rayEnvMode:     d.mode,
@@ -338,7 +353,7 @@ func createV2RayClient(client *routeros.Client, task *v2rayTask, d v2rayDeployme
 	}
 	undo = append(undo, func() { _ = client.RemoveContainer(d.name) })
 
-	task.set("pulling", "downloading "+image)
+	task.set("pulling", "unpacking sing-box")
 	deadline := time.Now().Add(pluginInstallTimeout)
 	for {
 		info, err := client.GetContainer(d.name)
@@ -351,6 +366,11 @@ func createV2RayClient(client *routeros.Client, task *v2rayTask, d v2rayDeployme
 			return
 		}
 		if !info.DownloadingExtracting {
+			if imageFile != "" {
+				// Unpacked into the container's root dir; the tar would only
+				// keep occupying flash.
+				_ = client.DeleteFile(imageFile)
+			}
 			break
 		}
 		if time.Now().After(deadline) {
@@ -715,4 +735,14 @@ func firstNonEmptyString(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// v2raySFTPConfig reuses the request's router credentials for the SFTP upload
+// of the image tar, the same way the setup wizard uploads its script.
+func v2raySFTPConfig(c echo.Context) sftp.Config {
+	cfg := sftp.Config{Timeout: 2 * time.Minute}
+	if creds, err := GetRouterOSCredentials(c); err == nil {
+		cfg.Host, cfg.Username, cfg.Password = creds.RouterOSHost, creds.Username, creds.Password
+	}
+	return cfg
 }

@@ -16,7 +16,7 @@ on:
         default: '1.14.3'
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 concurrency:
@@ -75,3 +75,41 @@ jobs:
               exit 1
             fi
           done
+
+      # The panel downloads these tars itself and loads them onto the router
+      # over SFTP, so routers never have to pull from ghcr.io (often slow or
+      # timing out on links from Iran).
+      - name: Install skopeo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+
+      - name: Package per-arch RouterOS container tars
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for spec in amd64:amd64: arm64:arm64: armv7:arm:v7; do
+            IFS=: read -r suffix arch variant <<< "$spec"
+            OUT="sing-box-slim-${VERSION}-${suffix}.tar"
+            skopeo copy --override-os linux --override-arch "$arch" ${variant:+--override-variant "$variant"} \
+              "docker://${IMAGE}:${VERSION}" "docker-archive:dist/${OUT}:sing-box-slim:${VERSION}-${suffix}"
+            ( cd dist && sha256sum "${OUT}" > "${OUT}.sha256" )
+            ls -l "dist/${OUT}"
+          done
+
+      - name: Publish tars to a release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: sing-box slim ${{ env.VERSION }}
+          # Never "latest": scripts/install.sh installs the latest release,
+          # which must stay the panel's.
+          prerelease: true
+          make_latest: false
+          body: |
+            Trimmed sing-box ${{ env.VERSION }} for V2Ray clients on RouterOS
+            (docker/sing-box-slim). The panel downloads these tars itself.
+          files: |
+            dist/*.tar
+            dist/*.tar.sha256
