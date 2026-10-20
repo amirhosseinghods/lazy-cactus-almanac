@@ -110,6 +110,11 @@ test.describe('V2Ray VPN clients', () => {
     await expect.poll(() => posts.length).toBe(1);
     expect(posts[0]).toEqual({ link: VLESS_LINK, comment: 'Germany', disabled: false });
     await expect(dialog).toBeHidden();
+    await expect(
+      page.getByRole('progressbar', {
+        name: 'Setting up V2Ray client "Germany": unpacking sing-box…',
+      }),
+    ).toBeVisible();
 
     await expect(
       page.getByRole('status').filter({ hasText: 'V2Ray client "Germany" is ready' }),

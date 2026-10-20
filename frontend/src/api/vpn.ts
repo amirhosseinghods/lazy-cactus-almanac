@@ -650,6 +650,9 @@ export interface V2RayClientTaskStatus {
   message: string;
   done: boolean;
   failed: boolean;
+  /** Image download progress in bytes, during the "downloading" phase. */
+  bytesDone?: number;
+  bytesTotal?: number;
 }
 
 export async function addV2RayClient(

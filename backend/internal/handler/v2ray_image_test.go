@@ -55,7 +55,10 @@ func TestDownloadV2RayImageResumes(t *testing.T) {
 	sum := sha256.Sum256(payload)
 	srv, requests := flakyImageServer(t, payload, hex.EncodeToString(sum[:]))
 
-	got, err := downloadV2RayImage(context.Background(), srv.URL+"/image.tar")
+	var lastDone, lastTotal int64
+	got, err := downloadV2RayImage(context.Background(), srv.URL+"/image.tar", func(done, total int64) {
+		lastDone, lastTotal = done, total
+	})
 	if err != nil {
 		t.Fatalf("downloadV2RayImage: %v", err)
 	}
@@ -65,11 +68,14 @@ func TestDownloadV2RayImageResumes(t *testing.T) {
 	if n := atomic.LoadInt32(requests); n != 2 {
 		t.Fatalf("image requests = %d, want 2 (cut off, then resumed)", n)
 	}
+	if lastDone != int64(len(payload)) || lastTotal != int64(len(payload)) {
+		t.Fatalf("last progress = %d/%d, want %d/%d", lastDone, lastTotal, len(payload), len(payload))
+	}
 }
 
 func TestDownloadV2RayImageRejectsBadChecksum(t *testing.T) {
 	srv, _ := flakyImageServer(t, []byte("payload"), strings.Repeat("0", 64))
-	if _, err := downloadV2RayImage(context.Background(), srv.URL+"/image.tar"); err == nil ||
+	if _, err := downloadV2RayImage(context.Background(), srv.URL+"/image.tar", nil); err == nil ||
 		!strings.Contains(err.Error(), "checksum mismatch") {
 		t.Fatalf("err = %v, want a checksum mismatch", err)
 	}

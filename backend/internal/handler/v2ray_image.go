@@ -59,13 +59,17 @@ func v2rayImageURL(suffix string) string {
 	return fmt.Sprintf(v2rayImageReleaseURL, suffix)
 }
 
+// progressFunc receives the bytes downloaded so far and the total size (0 when
+// the server does not say).
+type progressFunc func(done, total int64)
+
 // downloadV2RayImage fetches the image tar, resuming interrupted downloads
 // with HTTP ranges, and verifies it against the published sha256.
-func downloadV2RayImage(ctx context.Context, url string) ([]byte, error) {
+func downloadV2RayImage(ctx context.Context, url string, progress progressFunc) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, v2rayImageFetchTimeout)
 	defer cancel()
 
-	sumRaw, err := httpGetWithRetry(ctx, url+".sha256", 1<<10, nil)
+	sumRaw, err := httpGetWithRetry(ctx, url+".sha256", 1<<10, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download image checksum: %w", err)
 	}
@@ -76,7 +80,7 @@ func downloadV2RayImage(ctx context.Context, url string) ([]byte, error) {
 	want := strings.ToLower(fields[0])
 
 	var buf bytes.Buffer
-	if _, err := httpGetWithRetry(ctx, url, v2rayImageMaxBytes, &buf); err != nil {
+	if _, err := httpGetWithRetry(ctx, url, v2rayImageMaxBytes, &buf, progress); err != nil {
 		return nil, fmt.Errorf("failed to download image: %w", err)
 	}
 	sum := sha256.Sum256(buf.Bytes())
@@ -89,7 +93,7 @@ func downloadV2RayImage(ctx context.Context, url string) ([]byte, error) {
 // httpGetWithRetry downloads url, retrying failed attempts and resuming from
 // what was already received when the server honours Range requests. With a
 // nil dst the body is returned; otherwise it is written into dst.
-func httpGetWithRetry(ctx context.Context, url string, maxBytes int64, dst *bytes.Buffer) ([]byte, error) {
+func httpGetWithRetry(ctx context.Context, url string, maxBytes int64, dst *bytes.Buffer, progress progressFunc) ([]byte, error) {
 	if dst == nil {
 		dst = &bytes.Buffer{}
 	}
@@ -102,7 +106,7 @@ func httpGetWithRetry(ctx context.Context, url string, maxBytes int64, dst *byte
 			case <-time.After(time.Duration(attempt) * 3 * time.Second):
 			}
 		}
-		done, err := httpGetRange(ctx, url, maxBytes, dst)
+		done, err := httpGetRange(ctx, url, maxBytes, dst, progress)
 		if err == nil && done {
 			return dst.Bytes(), nil
 		}
@@ -111,7 +115,7 @@ func httpGetWithRetry(ctx context.Context, url string, maxBytes int64, dst *byte
 	return nil, lastErr
 }
 
-func httpGetRange(ctx context.Context, url string, maxBytes int64, dst *bytes.Buffer) (bool, error) {
+func httpGetRange(ctx context.Context, url string, maxBytes int64, dst *bytes.Buffer, progress progressFunc) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return false, err
@@ -137,7 +141,15 @@ func httpGetRange(ctx context.Context, url string, maxBytes int64, dst *bytes.Bu
 	}
 
 	remaining := maxBytes - int64(dst.Len())
-	n, err := io.Copy(dst, io.LimitReader(resp.Body, remaining+1))
+	body := io.LimitReader(resp.Body, remaining+1)
+	if progress != nil {
+		total := int64(0)
+		if resp.ContentLength >= 0 {
+			total = int64(dst.Len()) + resp.ContentLength
+		}
+		body = &progressReader{r: body, done: int64(dst.Len()), total: total, report: progress}
+	}
+	n, err := io.Copy(dst, body)
 	if int64(dst.Len()) > maxBytes {
 		return false, fmt.Errorf("download is larger than %d bytes", maxBytes)
 	}
@@ -150,6 +162,20 @@ func httpGetRange(ctx context.Context, url string, maxBytes int64, dst *bytes.Bu
 	return true, nil
 }
 
+// progressReader reports how much of a download has arrived.
+type progressReader struct {
+	r           io.Reader
+	done, total int64
+	report      progressFunc
+}
+
+func (p *progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	p.done += int64(n)
+	p.report(p.done, p.total)
+	return n, err
+}
+
 // v2rayImageUpload copies an image tar onto the router.
 type v2rayImageUpload struct {
 	sftp sftp.Config
@@ -158,7 +184,7 @@ type v2rayImageUpload struct {
 // stageV2RayImage downloads the image tar for the router's architecture and
 // uploads it under nasnet-panel/container-images. It returns the router path
 // to pass as the container's file.
-func stageV2RayImage(ctx context.Context, client *routeros.Client, up v2rayImageUpload, name string) (string, error) {
+func stageV2RayImage(ctx context.Context, client *routeros.Client, up v2rayImageUpload, name string, progress progressFunc) (string, error) {
 	resources, err := client.GetResourceInfo()
 	if err != nil {
 		return "", fmt.Errorf("failed to read router resources: %w", err)
@@ -168,7 +194,7 @@ func stageV2RayImage(ctx context.Context, client *routeros.Client, up v2rayImage
 		return "", err
 	}
 
-	image, err := downloadV2RayImage(ctx, v2rayImageURL(suffix))
+	image, err := downloadV2RayImage(ctx, v2rayImageURL(suffix), progress)
 	if err != nil {
 		return "", err
 	}

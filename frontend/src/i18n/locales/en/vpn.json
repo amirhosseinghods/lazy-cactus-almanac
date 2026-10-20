@@ -502,7 +502,18 @@
     "refreshUnchanged": "Server list is unchanged",
     "refreshFailed": "Failed to refresh subscription",
     "autoSwitchNote": "sing-box tests every server every 5 minutes and moves traffic to the fastest one. Traffic and DNS never leave outside the tunnel, and IPv6 is blocked.",
-    "leakNote": "Traffic and DNS never leave outside the tunnel, and IPv6 is blocked. If the server is down, traffic stops instead of leaking."
+    "leakNote": "Traffic and DNS never leave outside the tunnel, and IPv6 is blocked. If the server is down, traffic stops instead of leaking.",
+    "setup": {
+      "preparing": "getting ready…",
+      "fetching_subscription": "downloading the subscription…",
+      "downloading": "downloading sing-box…",
+      "downloadingBytes": "downloading sing-box ({{done}} of {{total}} MB)…",
+      "creating_interface": "creating the network interface…",
+      "writing_config": "writing the configuration…",
+      "creating_container": "creating the container…",
+      "pulling": "unpacking sing-box…",
+      "starting": "starting…"
+    }
   },
   "bypass": {
     "title": "Emergency: internet without VPN",

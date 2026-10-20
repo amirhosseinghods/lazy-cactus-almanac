@@ -20,6 +20,9 @@ type V2RayClientTaskStatus struct {
 	Message string `json:"message" example:"downloading ghcr.io/amirhosseinghods/sing-box-slim:1.14.3"`
 	Done    bool   `json:"done"`
 	Failed  bool   `json:"failed"`
+	// Image download progress in bytes; zero outside the downloading phase.
+	BytesDone  int64 `json:"bytesDone,omitempty"`
+	BytesTotal int64 `json:"bytesTotal,omitempty"`
 }
 
 // V2RayClientDetailsResponse describes a V2Ray client. The share link's

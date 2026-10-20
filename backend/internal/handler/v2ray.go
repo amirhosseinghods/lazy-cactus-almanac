@@ -88,6 +88,14 @@ type v2rayTask struct {
 	message string
 	done    bool
 	failed  bool
+	// Bytes of the image downloaded so far and in total (0 when unknown).
+	bytesDone, bytesTotal int64
+}
+
+func (t *v2rayTask) setProgress(done, total int64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.bytesDone, t.bytesTotal = done, total
 }
 
 func (t *v2rayTask) set(phase, message string) {
@@ -110,7 +118,15 @@ func (t *v2rayTask) finish(failed bool, message string) {
 func (t *v2rayTask) snapshot(name string) V2RayClientTaskStatus {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	return V2RayClientTaskStatus{Name: name, Phase: t.phase, Message: t.message, Done: t.done, Failed: t.failed}
+	return V2RayClientTaskStatus{
+		Name:       name,
+		Phase:      t.phase,
+		Message:    t.message,
+		Done:       t.done,
+		Failed:     t.failed,
+		BytesDone:  t.bytesDone,
+		BytesTotal: t.bytesTotal,
+	}
 }
 
 var v2rayTasks = struct {
@@ -160,46 +176,36 @@ func HandleAddV2RayClient(c echo.Context) error {
 		return ErrorResponse(c, http.StatusBadRequest, "Provide either a share link or a subscription URL", nil)
 	}
 
-	var (
-		res  *proxylink.SubscriptionResult
-		meta *v2rayMeta
-		mode = v2rayModeLink
-	)
+	// Only cheap checks happen here; downloading the subscription and the
+	// image can take minutes, so they run in the background and the UI
+	// polls the task for progress.
+	d := v2rayDeployment{
+		comment:  strings.TrimSpace(req.Comment),
+		mode:     v2rayModeLink,
+		disabled: req.Disabled != nil && *req.Disabled,
+		upload:   v2rayImageUpload{sftp: v2raySFTPConfig(c)},
+	}
 	if hasSubscription {
 		subscriptionURL, err := validateSubscriptionURL(req.Subscription)
 		if err != nil {
 			return ErrorResponse(c, http.StatusBadRequest, "Invalid subscription URL", err)
 		}
-		if res, err = fetchSubscription(c.Request().Context(), subscriptionURL); err != nil {
-			return ErrorResponse(c, http.StatusBadGateway, "Failed to load subscription", err)
-		}
-		secret, err := randomSecret()
-		if err != nil {
-			return ErrorResponse(c, http.StatusInternalServerError, "Failed to generate API secret", err)
-		}
-		meta = newV2RayMeta(subscriptionURL, secret, res)
-		mode = v2rayModeSubscription
+		d.mode = v2rayModeSubscription
+		d.subscriptionURL = subscriptionURL
 	} else {
 		link, err := proxylink.Parse(req.Link)
 		if err != nil {
 			return ErrorResponse(c, http.StatusBadRequest, "Invalid V2Ray link", err)
 		}
-		res = &proxylink.SubscriptionResult{Links: []*proxylink.Link{link}}
-		meta = newV2RayMeta("", "", res)
-	}
-	config, err := proxylink.GatewayConfig(res.Links, proxylink.GatewayOptions{ClashAPISecret: meta.APISecret})
-	if err != nil {
-		return ErrorResponse(c, http.StatusInternalServerError, "Failed to build sing-box configuration", err)
+		if d.comment == "" {
+			d.comment = link.Name
+		}
+		d.links = &proxylink.SubscriptionResult{Links: []*proxylink.Link{link}}
 	}
 
 	name := v2rayNamePrefix + utils.GenerateName(2, "-", utils.LowerCase)
 	if _, err := client.GetContainer(name); err == nil {
 		return ErrorResponse(c, http.StatusConflict, "A V2Ray client with this name already exists, try again", nil)
-	}
-
-	comment := strings.TrimSpace(req.Comment)
-	if comment == "" && mode == v2rayModeLink {
-		comment = res.Links[0].Name
 	}
 
 	task := &v2rayTask{phase: "preparing", message: "preparing"}
@@ -208,26 +214,21 @@ func HandleAddV2RayClient(c echo.Context) error {
 	v2rayTasks.byKey[key] = task
 	v2rayTasks.Unlock()
 
-	go createV2RayClient(client, task, v2rayDeployment{
-		name:     name,
-		comment:  comment,
-		mode:     mode,
-		meta:     meta,
-		config:   string(config),
-		disabled: req.Disabled != nil && *req.Disabled,
-		upload:   v2rayImageUpload{sftp: v2raySFTPConfig(c)},
-	})
+	d.name = name
+	go createV2RayClient(client, task, d)
 
 	return SuccessResponse(c, http.StatusAccepted, "V2Ray client creation started", task.snapshot(name))
 }
 
 type v2rayDeployment struct {
-	upload   v2rayImageUpload
-	name     string
-	comment  string
-	mode     string
-	meta     *v2rayMeta
-	config   string
+	upload          v2rayImageUpload
+	name            string
+	comment         string
+	mode            string
+	subscriptionURL string
+	// links is set up front for a share link and filled in from the
+	// subscription otherwise.
+	links    *proxylink.SubscriptionResult
 	disabled bool
 }
 
@@ -243,13 +244,37 @@ func createV2RayClient(client *routeros.Client, task *v2rayTask, d v2rayDeployme
 		task.finish(true, fmt.Sprintf("%s: %v", msg, err))
 	}
 
-	// Fetch the image before touching the router's configuration: it is the
-	// step most likely to fail, and it checks there is room on the router.
+	// Everything that can fail slowly or for lack of space happens before
+	// the router's configuration is touched.
+	var meta *v2rayMeta
+	if d.mode == v2rayModeSubscription {
+		task.set("fetching_subscription", "downloading the subscription")
+		res, err := fetchSubscription(context.Background(), d.subscriptionURL)
+		if err != nil {
+			fail("failed to load the subscription", err)
+			return
+		}
+		secret, err := randomSecret()
+		if err != nil {
+			fail("failed to generate API secret", err)
+			return
+		}
+		d.links = res
+		meta = newV2RayMeta(d.subscriptionURL, secret, res)
+	} else {
+		meta = newV2RayMeta("", "", d.links)
+	}
+	config, err := proxylink.GatewayConfig(d.links.Links, proxylink.GatewayOptions{ClashAPISecret: meta.APISecret})
+	if err != nil {
+		fail("failed to build sing-box configuration", err)
+		return
+	}
+
 	remoteImage := v2rayRemoteImage()
 	imageFile := ""
 	if remoteImage == "" {
 		task.set("downloading", "downloading sing-box")
-		path, err := stageV2RayImage(context.Background(), client, d.upload, d.name)
+		path, err := stageV2RayImage(context.Background(), client, d.upload, d.name, task.setProgress)
 		if err != nil {
 			fail("failed to prepare the sing-box image", err)
 			return
@@ -301,11 +326,11 @@ func createV2RayClient(client *routeros.Client, task *v2rayTask, d v2rayDeployme
 		return
 	}
 	undo = append(undo, func() { _, _ = removePluginVolumeDir(client, d.name) })
-	if err := client.AddFile(volumeDir+"/"+v2rayConfigFile, d.config); err != nil {
+	if err := client.AddFile(volumeDir+"/"+v2rayConfigFile, string(config)); err != nil {
 		fail("failed to write sing-box configuration", err)
 		return
 	}
-	if err := writeV2RayMeta(client, volumeDir, d.meta); err != nil {
+	if err := writeV2RayMeta(client, volumeDir, meta); err != nil {
 		fail("failed to write client metadata", err)
 		return
 	}
@@ -334,8 +359,8 @@ func createV2RayClient(client *routeros.Client, task *v2rayTask, d v2rayDeployme
 		Hostname:    d.name,
 		Env: joinEnvPairs(map[string]string{
 			v2rayEnvMode:     d.mode,
-			v2rayEnvProtocol: d.meta.Servers[0].Protocol,
-			v2rayEnvServer:   d.meta.Servers[0].Server,
+			v2rayEnvProtocol: meta.Servers[0].Protocol,
+			v2rayEnvServer:   meta.Servers[0].Server,
 			"GOMAXPROCS":     v2rayGoMaxProcs,
 			"GOMEMLIMIT":     v2rayGoMemLimit,
 		}),

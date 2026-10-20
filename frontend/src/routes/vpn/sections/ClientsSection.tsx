@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card, ConfirmDialog, Stack, useToast } from '@nasnet/ui';
+import { Card, ConfirmDialog, Progress, Stack, useToast } from '@nasnet/ui';
 import {
   ApiError,
   addL2TPClient,
@@ -19,6 +19,7 @@ import {
   type ImportWireguardConfigRequest,
   type ImportWireguardConfigResponse,
   type UpdateL2TPClientRequest,
+  type V2RayClientTaskStatus,
   type VPNClient,
   type VPNClientResponse,
   type VPNCredentials,
@@ -27,6 +28,7 @@ import { AddVpnClientDialog } from '../dialogs/AddVpnClientDialog';
 import { EditL2tpClientDialog } from '../dialogs/EditL2tpClientDialog';
 import { EditWgClientDialog } from '../dialogs/EditWgClientDialog';
 import { V2RayDetailsDialog } from '../dialogs/V2RayDetailsDialog';
+import { useFormat } from '../../../utils/useFormat';
 import { PaginationControls } from '../PaginationControls';
 import { usePagedFilter } from '../hooks/usePagedFilter';
 import { PAGE_SIZE } from '../utils';
@@ -35,7 +37,24 @@ import { ClientsTable } from './ClientsTable';
 import { SectionHeader } from './SectionHeader';
 import { VpnBypassCard } from './VpnBypassCard';
 
-const V2RAY_POLL_INTERVAL_MS = 3000;
+const V2RAY_POLL_INTERVAL_MS = 2000;
+
+/** Setup phases reported by the backend, in order, mapped to their labels. */
+const V2RAY_PHASES = [
+  'preparing',
+  'fetching_subscription',
+  'downloading',
+  'creating_interface',
+  'writing_config',
+  'creating_container',
+  'pulling',
+  'starting',
+] as const;
+
+interface V2RaySetup {
+  label: string;
+  status: V2RayClientTaskStatus | null;
+}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -67,6 +86,8 @@ export function ClientsSection({
   const [editing, setEditing] = useState<VPNClient | null>(null);
   const [pendingDelete, setPendingDelete] = useState<VPNClient | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [v2raySetup, setV2RaySetup] = useState<V2RaySetup | null>(null);
+  const format = useFormat();
 
   const dialogOpen = adding || editing !== null || pendingDelete !== null;
   useEffect(() => {
@@ -170,31 +191,32 @@ export function ClientsSection({
       fail(err);
       throw err;
     }
-    // The router now downloads the sing-box image in the background; close
-    // the dialog and report progress instead of blocking on it.
+    // The panel now downloads the subscription and the sing-box image in the
+    // background; close the dialog and show live progress above the table.
+    const label = req.comment || name;
     setAdding(false);
-    toast.notify({
-      title: t('clients.toast.v2rayCreating', { name: req.comment || name }),
-      description: t('clients.toast.v2rayCreatingDescription'),
-      tone: 'info',
-      durationMs: 8000,
-    });
+    setV2RaySetup({ label, status: null });
     onChanged();
     for (;;) {
       await sleep(V2RAY_POLL_INTERVAL_MS);
-      let status;
+      let status: V2RayClientTaskStatus;
       try {
         status = await fetchV2RayClientStatus(creds, name);
       } catch (err) {
+        setV2RaySetup(null);
         fail(err);
         return;
       }
-      if (!status.done) continue;
+      if (!status.done) {
+        setV2RaySetup({ label, status });
+        continue;
+      }
+      setV2RaySetup(null);
       if (status.failed) {
         fail(new Error(status.message));
       } else {
         toast.notify({
-          title: t('clients.toast.v2rayAdded', { name: req.comment || name }),
+          title: t('clients.toast.v2rayAdded', { name: label }),
           tone: 'success',
         });
       }
@@ -284,6 +306,23 @@ export function ClientsSection({
             onClick: () => setAdding(true),
           }}
         />
+        {v2raySetup ? (
+          <V2RaySetupProgress
+            setup={v2raySetup}
+            describe={(status) => {
+              const phase = V2RAY_PHASES.find((p) => p === status?.phase) ?? 'preparing';
+              if (phase === 'downloading' && status?.bytesTotal) {
+                return t('v2ray.setup.downloadingBytes', {
+                  done: format.number((status.bytesDone ?? 0) / 1048576, {
+                    maximumFractionDigits: 1,
+                  }),
+                  total: format.number(status.bytesTotal / 1048576, { maximumFractionDigits: 1 }),
+                });
+              }
+              return t(`v2ray.setup.${phase}`);
+            }}
+          />
+        ) : null}
         <div style={{ marginTop: 16 }}>
           <ClientsTable
             rows={paged.pagedRows}
@@ -372,5 +411,31 @@ export function ClientsSection({
         onCancel={() => (deleteSubmitting ? undefined : setPendingDelete(null))}
       />
     </Stack>
+  );
+}
+
+function V2RaySetupProgress({
+  setup,
+  describe,
+}: {
+  setup: V2RaySetup;
+  describe: (status: V2RayClientTaskStatus | null) => string;
+}) {
+  const { t } = useTranslation('vpn');
+  const { status } = setup;
+  const step = Math.max(0, V2RAY_PHASES.indexOf((status?.phase ?? 'preparing') as never));
+  // Within the download, advance by bytes; otherwise by finished steps.
+  const downloadFraction =
+    status?.phase === 'downloading' && status.bytesTotal
+      ? (status.bytesDone ?? 0) / status.bytesTotal
+      : 0;
+  const value = Math.round(((step + downloadFraction) / V2RAY_PHASES.length) * 100);
+  return (
+    <div role="status" style={{ marginTop: 16 }}>
+      <Progress
+        value={value}
+        label={`${t('clients.toast.v2rayCreating', { name: setup.label })}: ${describe(status)}`}
+      />
+    </div>
   );
 }
