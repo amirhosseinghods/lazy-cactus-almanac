@@ -1,9 +1,13 @@
 name: sing-box slim image
 
 # Builds the trimmed sing-box image that V2Ray clients run in on the router
-# (docker/sing-box-slim). Manual only: publishing a new tag changes what
-# newly created V2Ray clients pull.
+# (docker/sing-box-slim). Runs only on purpose — manually, or by pushing a
+# sing-box-slim-v<version> tag — since publishing a new tag changes what newly
+# created V2Ray clients pull.
 on:
+  push:
+    tags:
+      - 'sing-box-slim-v*'
   workflow_dispatch:
     inputs:
       version:
@@ -16,17 +20,21 @@ permissions:
   packages: write
 
 concurrency:
-  group: sing-box-slim-${{ inputs.version }}
+  group: sing-box-slim-${{ github.ref }}
   cancel-in-progress: false
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/sing-box-slim
+  VERSION: ${{ inputs.version || github.ref_name }}
 
 jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+
+      - name: Resolve sing-box version
+        run: echo "VERSION=${VERSION#sing-box-slim-v}" >> "$GITHUB_ENV"
 
       - uses: docker/setup-qemu-action@v4
 
@@ -45,9 +53,9 @@ jobs:
           push: true
           provenance: false
           sbom: false
-          tags: ${{ env.IMAGE }}:${{ inputs.version }}
+          tags: ${{ env.IMAGE }}:${{ env.VERSION }}
           build-args: |
-            SING_BOX_VERSION=${{ inputs.version }}
+            SING_BOX_VERSION=${{ env.VERSION }}
           cache-from: type=gha,scope=sing-box-slim
           cache-to: type=gha,mode=max,scope=sing-box-slim
 
@@ -56,7 +64,7 @@ jobs:
       - name: Enforce 20MB per-platform size budget
         run: |
           set -euo pipefail
-          REF="$IMAGE:${{ inputs.version }}"
+          REF="$IMAGE:$VERSION"
           for digest in $(docker buildx imagetools inspect "$REF" --raw | jq -r '.manifests[].digest'); do
             SIZE_BYTES=$(docker buildx imagetools inspect "$REF@$digest" --raw | jq '[.layers[].size] | add')
             SIZE_MB=$(awk "BEGIN { printf \"%.2f\", $SIZE_BYTES / 1048576 }")
