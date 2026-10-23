@@ -50,7 +50,7 @@ import {
   type IpAddressResponse,
   type SystemOverview,
   type TrafficSample,
-  type VPNActiveClient,
+  type VPNClientResponse,
 } from '../api';
 import { useRouter, useRouterStore } from '../state/RouterStoreContext';
 import { useSession } from '../state/SessionContext';
@@ -120,7 +120,7 @@ export function OverviewTab() {
   const { getCredentials } = useSession();
   const [overview, setOverview] = useState<SystemOverview | null>(null);
   const [traffic, setTraffic] = useState<TrafficSample[]>([]);
-  const [vpnClients, setVpnClients] = useState<VPNActiveClient[]>([]);
+  const [vpnClients, setVpnClients] = useState<VPNClientResponse[]>([]);
   const [dhcpLeaseList, setDhcpLeaseList] = useState<DHCPLeaseResponse[]>([]);
   const [interfaces, setInterfaces] = useState<InterfaceResponse[]>([]);
   const [ethernetRates, setEthernetRates] = useState<Record<string, IfaceLink>>({});
@@ -261,7 +261,7 @@ export function OverviewTab() {
       try {
         const [dynamic, vpnList, leases] = await Promise.all([
           fetchDynamicOverview({ host, ...creds }),
-          fetchVPNClients({ host, ...creds }).catch(() => [] as VPNActiveClient[]),
+          fetchVPNClients({ host, ...creds }).catch(() => [] as VPNClientResponse[]),
           fetchDHCPLeases({ host, ...creds }).catch(() => [] as DHCPLeaseResponse[]),
         ]);
         if (cancelled) return;
@@ -630,20 +630,23 @@ export function OverviewTab() {
             ) : (
               <div className={styles.vpnList}>
                 {vpnClients.map((c) => (
-                  <div
-                    key={`${c.protocol}-${c.id}`}
-                    className={cx(styles.vpnRow, styles.addressRow)}
-                  >
-                    <StatusDot $status="online" className={styles.vpnDot} aria-hidden />
-                    <span className={styles.vpnName} title={c.name}>
-                      {c.name}
+                  <div key={c.id} className={cx(styles.vpnRow, styles.addressRow)}>
+                    <StatusDot
+                      $status={c.disabled ? 'unknown' : c.running ? 'online' : 'offline'}
+                      className={styles.vpnDot}
+                      aria-hidden
+                    />
+                    <span className={styles.vpnName} title={c.name} dir="auto">
+                      {c.comment || c.name}
                     </span>
-                    <Badge tone="neutral">{c.protocol}</Badge>
-                    {c.address ? (
-                      <span className={styles.vpnAddress} title={c.address}>
-                        {c.address}
-                      </span>
-                    ) : null}
+                    <Badge tone="neutral">
+                      {c.type.replace(/-(out|client)$/, '').toUpperCase()}
+                    </Badge>
+                    {c.pingTime ? <Badge tone="info">{c.pingTime}</Badge> : null}
+                    <span className={styles.vpnAddress}>
+                      ↓ {fmt.bytes(c.rxByte ?? 0)}
+                      {'\u2003'}↑ {fmt.bytes(c.txByte ?? 0)}
+                    </span>
                   </div>
                 ))}
               </div>

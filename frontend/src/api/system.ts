@@ -1,4 +1,5 @@
-import type { SystemOverview, VPNActiveClient } from '../mocks/types';
+import type { SystemOverview } from '../mocks/types';
+import type { VPNClientResponse } from './vpn';
 import { formatBytes } from '../utils/format';
 import { apiRequest } from './http';
 
@@ -307,8 +308,8 @@ export async function updateForeignGateway(
 export async function fetchVPNClients(
   creds: SystemCredentials,
   signal?: AbortSignal,
-): Promise<VPNActiveClient[]> {
-  const clients = await apiRequest<VPNActiveClient[] | null>('/api/vpn/clients', {
+): Promise<VPNClientResponse[]> {
+  const clients = await apiRequest<VPNClientResponse[] | null>('/api/vpn/clients', {
     method: 'GET',
     headers: authHeaders(creds),
     cache: 'no-store',
@@ -396,7 +397,7 @@ export async function fetchDynamicOverview(
   const [resources, leases, vpnClients] = await Promise.all([
     fetchSystemResources(creds, signal),
     fetchDHCPLeases(creds, signal).catch(() => [] as DHCPLeaseResponse[]),
-    fetchVPNClients(creds, signal).catch(() => [] as VPNActiveClient[]),
+    fetchVPNClients(creds, signal).catch(() => [] as VPNClientResponse[]),
   ]);
   const hddUsedBytes = Math.max(0, resources.hddTotalBytes - resources.hddFreeBytes);
   return {

@@ -7,9 +7,13 @@ import (
 	"maps"
 )
 
-// ProxyTag is the tag traffic is routed to: the single server's outbound, or
-// the urltest group picking among several servers.
+// ProxyTag is the tag traffic is routed to: the single server's outbound, or,
+// with several servers, a selector that defaults to AutoTag and can be
+// switched to one server through the Clash API.
 const ProxyTag = "proxy"
+
+// AutoTag is the urltest group that keeps traffic on the fastest server.
+const AutoTag = "auto"
 
 // ClashAPIPort is where the gateway exposes sing-box's Clash API (when
 // GatewayOptions.ClashAPISecret is set), used to read which server urltest
@@ -59,8 +63,15 @@ func GatewayConfig(links []*Link, opts GatewayOptions) ([]byte, error) {
 			tags[i] = ServerTag(i)
 		}
 		outbounds = append(outbounds, map[string]any{
-			"type":      "urltest",
+			"type":      "selector",
 			"tag":       ProxyTag,
+			"outbounds": append([]string{AutoTag}, tags...),
+			"default":   AutoTag,
+			// Switching servers by hand should move existing connections too.
+			"interrupt_exist_connections": true,
+		}, map[string]any{
+			"type":      "urltest",
+			"tag":       AutoTag,
 			"outbounds": tags,
 			"url":       URLTestURL,
 			// Probing every server costs router CPU and data; a slow cadence

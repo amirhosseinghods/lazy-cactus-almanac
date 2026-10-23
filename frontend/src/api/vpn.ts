@@ -592,6 +592,8 @@ export interface V2RayServer {
   protocol: string;
   server: string;
   selected: boolean;
+  /** Last measured delay; absent when the last test failed or none ran yet. */
+  delayMs?: number;
 }
 
 export interface V2RayClientDetails {
@@ -607,6 +609,10 @@ export interface V2RayClientDetails {
   servers?: V2RayServer[];
   skipped?: number;
   refreshedAt?: string;
+  /** True while a server picked by hand is in use. */
+  manual: boolean;
+  /** False for configs written before servers could be picked by hand. */
+  canSelect: boolean;
 }
 
 export interface V2RayRefreshResponse {
@@ -642,6 +648,21 @@ export async function refreshV2RaySubscription(
       signal,
     },
   );
+}
+
+/** Picks a subscription server by its index in `servers`; null returns to automatic selection. */
+export async function selectV2RayServer(
+  creds: VPNCredentials,
+  name: string,
+  server: number | null,
+  signal?: AbortSignal,
+): Promise<void> {
+  await apiRequest(`/api/vpn/v2ray/client/${encodeURIComponent(name)}/server`, {
+    method: 'PUT',
+    headers: authHeaders(creds),
+    body: JSON.stringify({ server }),
+    signal,
+  });
 }
 
 export interface V2RayClientTaskStatus {

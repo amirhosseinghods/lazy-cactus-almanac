@@ -507,17 +507,27 @@ func HandleGetV2RayClient(c echo.Context) error {
 	if meta, err := readV2RayMeta(client, name); err == nil {
 		resp.Skipped = meta.Skipped
 		resp.RefreshedAt = &meta.RefreshedAt
-		selected := ""
+		var state *v2rayProxyState
 		if info.Running {
-			selected = v2raySelectedServer(c.Request().Context(), address, meta.APISecret)
+			state = v2rayProxies(c.Request().Context(), address, meta.APISecret)
+		}
+		if state != nil {
+			resp.Manual = state.Manual
+			resp.CanSelect = state.CanSelect && len(meta.Servers) > 1
 		}
 		for _, s := range meta.Servers {
-			resp.Servers = append(resp.Servers, V2RayServer{
+			server := V2RayServer{
 				Name:     s.Name,
 				Protocol: s.Protocol,
 				Server:   s.Server,
-				Selected: selected != "" && s.Tag == selected,
-			})
+			}
+			if state != nil {
+				server.Selected = s.Tag == state.Active
+				if d, ok := state.Delays[s.Tag]; ok {
+					server.DelayMs = &d
+				}
+			}
+			resp.Servers = append(resp.Servers, server)
 		}
 	}
 	return SuccessResponse(c, http.StatusOK, "V2Ray client retrieved successfully", resp)
@@ -573,6 +583,7 @@ func HandleDeleteV2RayClient(c echo.Context) error {
 	}
 
 	// The container is gone; everything below is best-effort cleanup.
+	v2rayAPISecrets.Delete(name)
 	if err := client.RemoveContainerMount(name); err != nil {
 		c.Logger().Errorf("Failed to remove mount %s: %v", name, err)
 	}
@@ -612,14 +623,70 @@ func listV2RayClients(client *routeros.Client) ([]routeros.VPNClientInfo, error)
 	}
 
 	var clients []routeros.VPNClientInfo
+	var ifaces map[string]routeros.InterfaceInfo
+	var addresses map[string]string
 	for i := range containers {
 		info := &containers[i]
 		if !isV2RayClientName(info.Name) {
 			continue
 		}
-		clients = append(clients, v2rayVPNClientInfo(info))
+		if ifaces == nil {
+			ifaces = v2rayInterfaceStats(client)
+			addresses, _ = client.ListVethAddresses()
+		}
+		vpn := v2rayVPNClientInfo(info)
+		// The veth counters are the client's traffic; seen from the router,
+		// what comes back from the container is the download.
+		if st, ok := ifaces[info.Interface]; ok {
+			if st.RxByte != nil {
+				vpn.RxByte = *st.RxByte
+			}
+			if st.TxByte != nil {
+				vpn.TxByte = *st.TxByte
+			}
+		}
+		if info.Running {
+			if secret := v2rayAPISecret(client, info.Name); secret != "" {
+				if state := v2rayProxies(context.Background(), addresses[info.Interface], secret); state != nil {
+					if d, ok := state.Delays[state.Active]; ok {
+						vpn.PingTime = fmt.Sprintf("%dms", d)
+					}
+				}
+			}
+		}
+		clients = append(clients, vpn)
 	}
 	return clients, nil
+}
+
+func v2rayInterfaceStats(client *routeros.Client) map[string]routeros.InterfaceInfo {
+	out := map[string]routeros.InterfaceInfo{}
+	list, err := client.ListInterfaces()
+	if err != nil {
+		return out
+	}
+	for i := range list {
+		out[list[i].Name] = list[i]
+	}
+	return out
+}
+
+// v2rayAPISecrets caches each client's Clash API secret, so the clients list
+// (polled every few seconds) does not read meta.json from flash each time.
+var v2rayAPISecrets sync.Map
+
+func v2rayAPISecret(client *routeros.Client, name string) string {
+	if v, ok := v2rayAPISecrets.Load(name); ok {
+		if secret, ok := v.(string); ok {
+			return secret
+		}
+	}
+	meta, err := readV2RayMeta(client, name)
+	if err != nil {
+		return ""
+	}
+	v2rayAPISecrets.Store(name, meta.APISecret)
+	return meta.APISecret
 }
 
 func v2rayVPNClientInfo(info *routeros.ContainerInfo) routeros.VPNClientInfo {

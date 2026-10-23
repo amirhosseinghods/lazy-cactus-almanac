@@ -39,9 +39,13 @@ type V2RayClientDetailsResponse struct {
 	Pulling  bool   `json:"pulling"`
 	// Servers lists the servers behind this client; Selected marks the one
 	// in use when the router can tell.
-	Servers     []V2RayServer `json:"servers,omitempty"`
-	Skipped     int           `json:"skipped,omitempty"`
-	RefreshedAt *time.Time    `json:"refreshedAt,omitempty"`
+	Servers []V2RayServer `json:"servers,omitempty"`
+	// Manual is true while a server picked by hand is in use.
+	Manual bool `json:"manual"`
+	// CanSelect is true when servers can be picked by hand.
+	CanSelect   bool       `json:"canSelect"`
+	Skipped     int        `json:"skipped,omitempty"`
+	RefreshedAt *time.Time `json:"refreshedAt,omitempty"`
 }
 
 // V2RayServer is one server of a V2Ray client.
@@ -50,6 +54,15 @@ type V2RayServer struct {
 	Protocol string `json:"protocol" example:"vless"`
 	Server   string `json:"server" example:"de1.example.com:443"`
 	Selected bool   `json:"selected"`
+	// DelayMs is the last measured delay; absent when the last test failed
+	// or none has run yet.
+	DelayMs *int `json:"delayMs,omitempty" example:"182"`
+}
+
+// SelectV2RayServerRequest picks a server by its index in the details'
+// server list; a null or absent index returns to automatic selection.
+type SelectV2RayServerRequest struct {
+	Server *int `json:"server" example:"2"`
 }
 
 // V2RayRefreshResponse reports the outcome of a subscription refresh.

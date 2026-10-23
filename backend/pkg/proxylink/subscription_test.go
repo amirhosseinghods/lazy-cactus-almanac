@@ -109,15 +109,20 @@ func TestGatewayConfigURLTest(t *testing.T) {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 
-	group := cfg.Outbounds[0]
-	if group["type"] != "urltest" || group["tag"] != ProxyTag {
-		t.Fatalf("first outbound = %v, want the urltest group", group)
+	selector, auto := cfg.Outbounds[0], cfg.Outbounds[1]
+	if selector["type"] != "selector" || selector["tag"] != ProxyTag || selector["default"] != AutoTag {
+		t.Fatalf("first outbound = %v, want the selector defaulting to %s", selector, AutoTag)
 	}
-	members, _ := group["outbounds"].([]any)
-	if len(members) != 2 || members[0] != "server-1" || members[1] != "server-2" {
+	if choices, _ := selector["outbounds"].([]any); len(choices) != 3 || choices[0] != AutoTag || choices[2] != "server-2" {
+		t.Fatalf("selector choices = %v", choices)
+	}
+	if auto["type"] != "urltest" || auto["tag"] != AutoTag {
+		t.Fatalf("second outbound = %v, want the urltest group", auto)
+	}
+	if members, _ := auto["outbounds"].([]any); len(members) != 2 || members[0] != "server-1" || members[1] != "server-2" {
 		t.Fatalf("urltest members = %v", members)
 	}
-	if cfg.Outbounds[1]["tag"] != "server-1" || cfg.Outbounds[2]["tag"] != "server-2" || cfg.Outbounds[3]["type"] != "direct" {
+	if cfg.Outbounds[2]["tag"] != "server-1" || cfg.Outbounds[3]["tag"] != "server-2" || cfg.Outbounds[4]["type"] != "direct" {
 		t.Fatalf("unexpected outbounds: %v", cfg.Outbounds)
 	}
 	if cfg.Route["final"] != ProxyTag {

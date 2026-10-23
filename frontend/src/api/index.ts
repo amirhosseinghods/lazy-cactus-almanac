@@ -180,6 +180,7 @@ export {
   deleteV2RayClient,
   fetchV2RayClientDetails,
   refreshV2RaySubscription,
+  selectV2RayServer,
   fetchVPNServersStatus,
   fetchOvpnServerDetails,
   fetchPptpServerDetails,

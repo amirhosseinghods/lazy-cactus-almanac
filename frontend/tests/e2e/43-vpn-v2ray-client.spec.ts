@@ -295,12 +295,25 @@ test.describe('V2Ray VPN clients', () => {
           pulling: false,
           skipped: 1,
           refreshedAt: '2026-10-20T10:00:00Z',
+          manual: false,
+          canSelect: true,
           servers: [
             { name: 'DE 1', protocol: 'vless', server: 'de1.example.com:443', selected: false },
-            { name: 'NL 1', protocol: 'trojan', server: 'nl1.example.com:443', selected: true },
+            {
+              name: 'NL 1',
+              protocol: 'trojan',
+              server: 'nl1.example.com:443',
+              selected: true,
+              delayMs: 182,
+            },
           ],
         }),
       });
+    });
+    const selections: unknown[] = [];
+    await context.route(`**/api/vpn/v2ray/client/${v2rayClient.name}/server`, async (route) => {
+      selections.push(route.request().postDataJSON());
+      await route.fulfill({ status: 200, contentType: 'application/json', body: envelope(null) });
     });
     let refreshes = 0;
     await context.route(`**/api/vpn/v2ray/client/${v2rayClient.name}/refresh`, async (route) => {
@@ -323,9 +336,13 @@ test.describe('V2Ray VPN clients', () => {
       .click();
 
     const dialog = page.getByRole('dialog');
-    await expect(dialog.getByText('Subscription (automatic fastest server)')).toBeVisible();
+    await expect(dialog.getByText('Automatic (fastest server)')).toBeVisible();
     await expect(dialog.getByRole('row', { name: /NL 1/ }).getByText('In use')).toBeVisible();
-    await expect(dialog.getByRole('row', { name: /DE 1/ }).getByText('In use')).toHaveCount(0);
+    await expect(dialog.getByRole('row', { name: /NL 1/ }).getByText('182 ms')).toBeVisible();
+    await expect(dialog.getByRole('row', { name: /DE 1/ }).getByText('No reply')).toBeVisible();
+
+    await dialog.getByRole('button', { name: 'Use DE 1' }).click();
+    await expect.poll(() => selections).toEqual([{ server: 0 }]);
 
     await dialog.getByRole('button', { name: 'Refresh now' }).click();
     await expect.poll(() => refreshes).toBe(1);

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -210,32 +211,167 @@ func writeV2RayMeta(client *routeros.Client, dir string, meta *v2rayMeta) error 
 	return nil
 }
 
-// v2raySelectedServer asks the container's sing-box which server the urltest
-// group currently uses. It returns "" when that cannot be determined.
-func v2raySelectedServer(ctx context.Context, ip, secret string) string {
-	if ip == "" || secret == "" {
-		return ""
-	}
+// v2rayProxyState is what the container's sing-box reports through its Clash
+// API: the last measured delay of each server, the server in use, and
+// whether that server was picked by hand.
+type v2rayProxyState struct {
+	// Delays holds the last urltest delay in milliseconds per server tag; a
+	// server that failed its last test is absent.
+	Delays map[string]int
+	Active string
+	Manual bool
+	// CanSelect is false for configs written before servers could be picked
+	// by hand (the urltest group was the top-level outbound then).
+	CanSelect bool
+}
+
+func clashAPIRequest(ctx context.Context, method, ip, secret, path string, body io.Reader) (*http.Response, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	endpoint := fmt.Sprintf("http://%s/proxies/%s", net.JoinHostPort(ip, fmt.Sprint(proxylink.ClashAPIPort)), proxylink.ProxyTag)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
+	endpoint := fmt.Sprintf("http://%s%s", net.JoinHostPort(ip, fmt.Sprint(proxylink.ClashAPIPort)), path)
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, body)
 	if err != nil {
-		return ""
+		cancel()
+		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+secret)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return ""
+		cancel()
+		return nil, err
+	}
+	resp.Body = cancelOnClose{resp.Body, cancel}
+	return resp, nil
+}
+
+type cancelOnClose struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (c cancelOnClose) Close() error {
+	defer c.cancel()
+	return c.ReadCloser.Close()
+}
+
+// v2rayProxies reads the container's proxy state. It returns nil when the
+// API is off (single-link clients) or unreachable.
+func v2rayProxies(ctx context.Context, ip, secret string) *v2rayProxyState {
+	if ip == "" || secret == "" {
+		return nil
+	}
+	resp, err := clashAPIRequest(ctx, http.MethodGet, ip, secret, "/proxies", http.NoBody)
+	if err != nil {
+		return nil
 	}
 	defer func() { _ = resp.Body.Close() }()
 	var body struct {
-		Now string `json:"now"`
+		Proxies map[string]struct {
+			Type    string `json:"type"`
+			Now     string `json:"now"`
+			History []struct {
+				Delay int `json:"delay"`
+			} `json:"history"`
+		} `json:"proxies"`
 	}
-	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&body) != nil {
-		return ""
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body) != nil {
+		return nil
 	}
-	return body.Now
+
+	state := &v2rayProxyState{Delays: map[string]int{}}
+	for tag, p := range body.Proxies {
+		if n := len(p.History); n > 0 && p.History[n-1].Delay > 0 {
+			state.Delays[tag] = p.History[n-1].Delay
+		}
+	}
+	top := body.Proxies[proxylink.ProxyTag]
+	state.Active = top.Now
+	if top.Type == "Selector" {
+		state.CanSelect = true
+		if top.Now == proxylink.AutoTag {
+			state.Active = body.Proxies[proxylink.AutoTag].Now
+		} else {
+			state.Manual = true
+		}
+	}
+	return state
+}
+
+// v2raySelect points the container's selector at tag (a server, or AutoTag
+// for the fastest one).
+func v2raySelect(ctx context.Context, ip, secret, tag string) error {
+	payload, err := json.Marshal(map[string]string{"name": tag})
+	if err != nil {
+		return err
+	}
+	resp, err := clashAPIRequest(ctx, http.MethodPut, ip, secret, "/proxies/"+proxylink.ProxyTag, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return fmt.Errorf("sing-box refused the selection: %s", strings.TrimSpace(string(msg)))
+	}
+	return nil
+}
+
+// HandleSelectV2RayServer picks a subscription client's server by hand
+// @Summary Select V2Ray Server
+// @Description Points a subscription client at one of its servers (by index in the details' server list),
+// @Description or back to automatic fastest-server selection with "auto". The choice lasts until the
+// @Description container restarts, when automatic selection resumes.
+// @Tags VPN
+// @Security BasicAuth
+// @Param X-RouterOS-Host header string true "RouterOS host address"
+// @Param name path string true "V2Ray client name"
+// @Param body body SelectV2RayServerRequest true "Server to use"
+// @Accept json
+// @Produce json
+// @Success 200 {object} Response
+// @Failure 400 {object} Response
+// @Failure 409 {object} Response
+// @Failure 502 {object} Response
+// @Router /api/vpn/v2ray/client/{name}/server [put].
+func HandleSelectV2RayServer(c echo.Context) error {
+	client, err := GetRouterOSClient(c)
+	if err != nil {
+		return err
+	}
+	name := c.Param("name")
+	if !isV2RayClientName(name) {
+		return ErrorResponse(c, http.StatusBadRequest, "Not a V2Ray client name", nil)
+	}
+	var req SelectV2RayServerRequest
+	if err := c.Bind(&req); err != nil {
+		return ErrorResponse(c, http.StatusBadRequest, "Invalid request body", err)
+	}
+
+	info, err := client.GetContainer(name)
+	if err != nil {
+		return ErrorResponse(c, http.StatusNotFound, "V2Ray client not found", err)
+	}
+	meta, err := readV2RayMeta(client, name)
+	if err != nil || meta.APISecret == "" || len(meta.Servers) < 2 {
+		return ErrorResponse(c, http.StatusConflict, "Only subscription clients with several servers can switch servers", err)
+	}
+	tag := proxylink.AutoTag
+	if req.Server != nil {
+		if *req.Server < 0 || *req.Server >= len(meta.Servers) {
+			return ErrorResponse(c, http.StatusBadRequest, "No server with that index", nil)
+		}
+		tag = meta.Servers[*req.Server].Tag
+	}
+	ip, err := v2rayClientIP(client, info)
+	if err != nil {
+		return ErrorResponse(c, http.StatusInternalServerError, "Failed to find the client's address", err)
+	}
+	if state := v2rayProxies(c.Request().Context(), ip, meta.APISecret); state != nil && !state.CanSelect {
+		return ErrorResponse(c, http.StatusConflict, "This client's configuration predates server selection; press Refresh now once to update it", nil)
+	}
+	if err := v2raySelect(c.Request().Context(), ip, meta.APISecret, tag); err != nil {
+		return ErrorResponse(c, http.StatusBadGateway, "Failed to switch server", err)
+	}
+	return SimpleSuccessResponse(c, http.StatusOK, "Server selected")
 }
 
 // HandleRefreshV2RaySubscription re-fetches a V2Ray client's subscription
