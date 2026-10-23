@@ -390,17 +390,22 @@ export type DynamicOverview = Pick<
   | 'vpnTunnels'
 >;
 
+/** The overview numbers, plus the lease and VPN client lists they were counted from. */
 export async function fetchDynamicOverview(
   creds: SystemCredentials,
   signal?: AbortSignal,
-): Promise<DynamicOverview> {
+): Promise<{
+  overview: DynamicOverview;
+  leases: DHCPLeaseResponse[];
+  vpnClients: VPNClientResponse[];
+}> {
   const [resources, leases, vpnClients] = await Promise.all([
     fetchSystemResources(creds, signal),
     fetchDHCPLeases(creds, signal).catch(() => [] as DHCPLeaseResponse[]),
     fetchVPNClients(creds, signal).catch(() => [] as VPNClientResponse[]),
   ]);
   const hddUsedBytes = Math.max(0, resources.hddTotalBytes - resources.hddFreeBytes);
-  return {
+  const overview: DynamicOverview = {
     uptime: resources.uptime,
     cpuLoad: resources.cpuLoad,
     cpuCount: resources.cpuCount,
@@ -415,6 +420,7 @@ export async function fetchDynamicOverview(
     dhcpLeases: leases.length,
     vpnTunnels: vpnClients.length,
   };
+  return { overview, leases, vpnClients };
 }
 
 export async function fetchSystemOverview(
@@ -422,7 +428,7 @@ export async function fetchSystemOverview(
   creds: SystemCredentials,
   signal?: AbortSignal,
 ): Promise<SystemOverview> {
-  const [info, dynamic] = await Promise.all([
+  const [info, { overview: dynamic }] = await Promise.all([
     fetchSystemInfo(creds, signal),
     fetchDynamicOverview(creds, signal),
   ]);

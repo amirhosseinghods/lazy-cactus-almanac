@@ -31,14 +31,12 @@ import {
 } from '@nasnet/ui';
 import {
   ApiError,
-  fetchDHCPLeases,
   fetchDhcpClients,
   fetchDynamicOverview,
   fetchEthernetInterfaces,
   fetchInterfaceGraph,
   fetchInterfaces,
   fetchSystemOverview,
-  fetchVPNClients,
   rebootSystem,
   setSystemIdentity,
   shutdownSystem,
@@ -257,19 +255,29 @@ export function OverviewTab() {
       }
     };
 
+    // The router answers one command at a time; overlapping polls would queue
+    // up behind slow ones (VPN pings) and stall every other page request.
+    let polling = false;
     const pollDynamic = async () => {
+      if (polling) return;
+      polling = true;
       try {
-        const [dynamic, vpnList, leases] = await Promise.all([
-          fetchDynamicOverview({ host, ...creds }),
-          fetchVPNClients({ host, ...creds }).catch(() => [] as VPNClientResponse[]),
-          fetchDHCPLeases({ host, ...creds }).catch(() => [] as DHCPLeaseResponse[]),
-        ]);
+        const {
+          overview: dynamic,
+          leases,
+          vpnClients: vpnList,
+        } = await fetchDynamicOverview({
+          host,
+          ...creds,
+        });
         if (cancelled) return;
         setOverview((prev) => (prev ? { ...prev, ...dynamic } : prev));
         setDhcpLeaseList(leases.filter((l) => l.status === 'bound'));
         setVpnClients(vpnList);
       } catch {
         // keep previous values on transient failures
+      } finally {
+        polling = false;
       }
     };
 
