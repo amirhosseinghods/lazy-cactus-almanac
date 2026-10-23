@@ -24,8 +24,9 @@ import (
 // points (often a slow tunnel) and restarts from zero on every hiccup.
 const (
 	// The release URL is formatted with the architecture suffix (amd64,
-	// arm64, armv7). The ".sha256" next to it holds the checksum.
-	v2rayImageReleaseURL = "https://github.com/amirhosseinghods/nasnet-panel/releases/download/sing-box-slim-v1.14.3/sing-box-slim-1.14.3-%s.tar"
+	// arm64, armv7). The ".sha256" next to it holds the checksum. The tars
+	// live in a public repository so the panel can fetch them without a token.
+	v2rayImageReleaseURL = "https://github.com/amirhosseinghods/sing-box-slim/releases/download/v1.14.3/sing-box-slim-1.14.3-%s.tar"
 	v2rayImageURLEnv     = "NASNET_V2RAY_IMAGE_URL"
 
 	v2rayImageMaxBytes      = 40 << 20
