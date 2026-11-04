@@ -125,7 +125,7 @@ The backend speaks multiple protocols to RouterOS and falls back automatically: 
 This fork adds V2Ray clients (VLESS/REALITY, VMess, Trojan, Shadowsocks, Hysteria2, TUIC, and subscription links with automatic fastest-server selection). To install it on a MikroTik, run this on a Mac or Linux computer that is on the router's network, and answer the prompts (router IP, user, password):
 
 ```bash
-NASNET_GH_OWNER=amirhosseinghods bash <(curl -fsSL https://raw.githubusercontent.com/amirhosseinghods/nasnet-panel/feat/v2ray-client/scripts/install.sh)
+NASNET_GH_OWNER=amirhosseinghods NASNET_GH_REPO=lazy-cactus-almanac bash <(curl -fsSL https://raw.githubusercontent.com/amirhosseinghods/lazy-cactus-almanac/feat/v2ray-client/scripts/install.sh)
 ```
 
 It needs `bash`, `curl`, `ssh`, `scp` and `sha256sum` (or `shasum`), and the router needs RouterOS v7 with the container package and container device-mode enabled. Everything else works as described in [section 2](#2-mikrotik-routeros-via-scriptsinstallsh) below.

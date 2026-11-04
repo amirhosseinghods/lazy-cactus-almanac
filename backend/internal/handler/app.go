@@ -25,8 +25,8 @@ import (
 )
 
 const (
-	githubLatestReleaseURL = "https://api.github.com/repos/nasnet-community/nasnet-panel/releases/latest"
-	appContainerImage      = "ghcr.io/nasnet-community/nasnet-panel"
+	githubLatestReleaseURL = "https://api.github.com/repos/amirhosseinghods/lazy-cactus-almanac/releases/latest"
+	appContainerImage      = "ghcr.io/amirhosseinghods/nasnet-panel" // matches IMAGE in .github/workflows/release.yml
 	appContainerName       = "nasnet-panel" // matches CONTAINER_NAME in scripts/install.sh
 	appUpdateContainerName = "nasnet-panel-update"
 	appDatabaseMountList   = "nasnet-panel-database"
