@@ -353,6 +353,24 @@ func (c *Client) BackupSystem(name string) error {
 	return nil
 }
 
+// RestoreBackup loads the backup file name (a path under /file, including its
+// extension) with an empty password, matching BackupSystem, which saves
+// unencrypted backups. RouterOS rejects the command without the password
+// argument. RouterOS reboots as soon as the load starts, so a dropped
+// connection after the command was sent is treated as success. The command is
+// sent once and never retried, so a reconnect cannot trigger a second restore.
+func (c *Client) RestoreBackup(name string) error {
+	if name == "" {
+		return fmt.Errorf("backup name is required")
+	}
+
+	if _, err := c.ExecuteOnce("/system/backup/load", "=name="+name, "=password="); err != nil && !isNetworkError(err) {
+		return fmt.Errorf("failed to restore backup %s: %w", name, err)
+	}
+
+	return nil
+}
+
 func (c *Client) RebootSystem() error {
 	_, err := c.Execute("/system/reboot")
 	if err != nil {
@@ -597,6 +615,11 @@ func (c *Client) CheckForUpdates() (*UpdateCheckInfo, error) {
 		return nil, fmt.Errorf("failed to check for updates: %w", err)
 	}
 
+	return c.GetUpdateStatus()
+}
+
+// GetUpdateStatus reads /system/package/update without asking RouterOS to check for updates first.
+func (c *Client) GetUpdateStatus() (*UpdateCheckInfo, error) {
 	result, err := c.GetFirst("/system/package/update")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get update status: %w", err)
@@ -614,6 +637,22 @@ func (c *Client) CheckForUpdates() (*UpdateCheckInfo, error) {
 		Status:           status,
 		UpdateAvailable:  updateAvailable,
 	}, nil
+}
+
+// StartPackageUpdateInstall asks RouterOS to download and install the latest packages. RouterOS
+// reboots when the download is done, so the connection is usually lost before this returns.
+func (c *Client) StartPackageUpdateInstall() error {
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+
+	if conn == nil {
+		return fmt.Errorf("failed to install update: not connected to RouterOS")
+	}
+	if _, err := conn.Run("/system/package/update/install"); err != nil {
+		return fmt.Errorf("failed to install update: %w", err)
+	}
+	return nil
 }
 
 // InstallUpdate installs the latest package update.

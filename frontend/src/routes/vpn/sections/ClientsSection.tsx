@@ -4,28 +4,35 @@ import { Card, ConfirmDialog, Progress, Stack, useToast } from '@nasnet/ui';
 import {
   ApiError,
   addL2TPClient,
+  addSSTPClient,
   addV2RayClient,
   createWireguardClient,
   deleteL2TPClient,
+  deleteSSTPClient,
   deleteV2RayClient,
   deleteWireguardInterface,
   fetchV2RayClientStatus,
   importWireguardConfig,
+  resetInterfaceTrafficCounter,
   updateL2TPClient,
+  updateSSTPClient,
   type AddL2TPClientRequest,
   type AddV2RayClientRequest,
+  type AddSSTPClientRequest,
   type CreateWireguardClientRequest,
   type CreateWireguardClientResponse,
   type ImportWireguardConfigRequest,
   type ImportWireguardConfigResponse,
   type UpdateL2TPClientRequest,
   type V2RayClientTaskStatus,
+  type UpdateSSTPClientRequest,
   type VPNClient,
   type VPNClientResponse,
   type VPNCredentials,
 } from '../../../api';
 import { AddVpnClientDialog } from '../dialogs/AddVpnClientDialog';
 import { EditL2tpClientDialog } from '../dialogs/EditL2tpClientDialog';
+import { EditSstpClientDialog } from '../dialogs/EditSstpClientDialog';
 import { EditWgClientDialog } from '../dialogs/EditWgClientDialog';
 import { V2RayDetailsDialog } from '../dialogs/V2RayDetailsDialog';
 import { useFormat } from '../../../utils/useFormat';
@@ -36,6 +43,7 @@ import { summarizeWireguardImport } from '../wgClientSummary';
 import { ClientsTable } from './ClientsTable';
 import { SectionHeader } from './SectionHeader';
 import { VpnBypassCard } from './VpnBypassCard';
+import { ForeignSitesCard } from './ForeignSitesCard';
 import { SplitPrivacyCard } from './SplitPrivacyCard';
 
 const V2RAY_POLL_INTERVAL_MS = 2000;
@@ -65,6 +73,13 @@ const matches = (c: VPNClient, q: string) =>
   (c.username ?? '').toLowerCase().includes(q) ||
   (c.comment ?? '').toLowerCase().includes(q);
 
+const deleteKey = (c: VPNClient | null): 'wg' | 'sstp' | 'v2ray' | 'l2tp' =>
+  c?.protocol === 'wireguard'
+    ? 'wg'
+    : c?.protocol === 'sstp' || c?.protocol === 'v2ray'
+      ? c.protocol
+      : 'l2tp';
+
 interface Props {
   creds: VPNCredentials | null;
   clients: VPNClient[];
@@ -89,8 +104,10 @@ export function ClientsSection({
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [v2raySetup, setV2RaySetup] = useState<V2RaySetup | null>(null);
   const format = useFormat();
+  const [pendingReset, setPendingReset] = useState<VPNClient | null>(null);
+  const [resetSubmitting, setResetSubmitting] = useState(false);
 
-  const dialogOpen = adding || editing !== null || pendingDelete !== null;
+  const dialogOpen = adding || editing !== null || pendingDelete !== null || pendingReset !== null;
   useEffect(() => {
     onDialogOpenChange?.(dialogOpen);
   }, [dialogOpen, onDialogOpenChange]);
@@ -115,6 +132,29 @@ export function ClientsSection({
     }
     setAdding(false);
     toast.notify({ title: t('clients.toast.l2tpAdded', { name: created.name }), tone: 'success' });
+    onChanged();
+  };
+
+  const onSubmitSSTP = async (req: AddSSTPClientRequest) => {
+    if (!creds) {
+      toast.notify({ title: t('shared.notConnected'), tone: 'danger' });
+      return;
+    }
+    let created: VPNClientResponse;
+    try {
+      created = await addSSTPClient(creds, req);
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : t('clients.toast.addSstpFailedDescription');
+      toast.notify({ title: t('clients.toast.addFailed'), description: message, tone: 'danger' });
+      throw err;
+    }
+    setAdding(false);
+    toast.notify({ title: t('clients.toast.sstpAdded', { name: created.name }), tone: 'success' });
     onChanged();
   };
 
@@ -257,6 +297,37 @@ export function ClientsSection({
     });
   };
 
+  const onSubmitSstpEdit = async (req: UpdateSSTPClientRequest) => {
+    if (!creds || !editing) {
+      toast.notify({ title: t('shared.notConnected'), tone: 'danger' });
+      return;
+    }
+    const target = editing;
+    try {
+      await updateSSTPClient(creds, target.id, req);
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : t('clients.toast.sstpUpdateFailedDescription');
+      toast.notify({
+        title: t('clients.toast.sstpUpdateFailed'),
+        description: message,
+        tone: 'danger',
+      });
+      throw err;
+    }
+    setEditing(null);
+    toast.notify({ title: t('clients.toast.sstpUpdated', { name: target.name }), tone: 'success' });
+    onClientUpdated({
+      ...target,
+      comment: req.comment ?? target.comment,
+      enabled: req.disabled === undefined ? target.enabled : !req.disabled,
+    });
+  };
+
   const onConfirmDelete = async () => {
     if (!creds || !pendingDelete) return;
     const target = pendingDelete;
@@ -266,6 +337,8 @@ export function ClientsSection({
         await deleteWireguardInterface(creds, target.name);
       } else if (target.protocol === 'v2ray') {
         await deleteV2RayClient(creds, target.name);
+      } else if (target.protocol === 'sstp') {
+        await deleteSSTPClient(creds, target.id);
       } else {
         await deleteL2TPClient(creds, target.id);
       }
@@ -290,6 +363,37 @@ export function ClientsSection({
     onChanged();
   };
 
+  const onConfirmReset = async () => {
+    if (!creds || !pendingReset) return;
+    const target = pendingReset;
+    setResetSubmitting(true);
+    try {
+      await resetInterfaceTrafficCounter(creds, target.name);
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : t('clients.toast.trafficResetFailedDescription');
+      toast.notify({
+        title: t('clients.toast.trafficResetFailed'),
+        description: message,
+        tone: 'danger',
+      });
+      setResetSubmitting(false);
+      return;
+    }
+    setResetSubmitting(false);
+    setPendingReset(null);
+    toast.notify({
+      title: t('clients.toast.trafficReset', { name: target.name }),
+      tone: 'success',
+    });
+    onClientUpdated({ ...target, rxByte: 0, txByte: 0 });
+    onChanged();
+  };
+
   return (
     <Stack>
       <VpnBypassCard
@@ -297,6 +401,7 @@ export function ClientsSection({
         onChanged={onChanged}
         labelFor={(name) => clients.find((c) => c.name === name)?.comment || name}
       />
+      <ForeignSitesCard creds={creds} />
       <SplitPrivacyCard creds={creds} />
       <Card>
         <SectionHeader
@@ -333,6 +438,7 @@ export function ClientsSection({
             onToggled={onChanged}
             onEdit={(c) => setEditing(c)}
             onDelete={(c) => setPendingDelete(c)}
+            onResetTraffic={(c) => setPendingReset(c)}
           />
           <PaginationControls
             page={paged.page}
@@ -348,6 +454,7 @@ export function ClientsSection({
         <AddVpnClientDialog
           onCancel={() => setAdding(false)}
           onSubmitL2TP={onSubmitL2TP}
+          onSubmitSSTP={onSubmitSSTP}
           onSubmitWireguard={onSubmitWireguard}
           onSubmitWireguardImport={onSubmitWireguardImport}
           onSubmitV2Ray={onSubmitV2Ray}
@@ -359,6 +466,14 @@ export function ClientsSection({
           creds={creds}
           onCancel={() => setEditing(null)}
           onSubmit={onSubmitEdit}
+        />
+      ) : null}
+      {editing && editing.protocol === 'sstp' ? (
+        <EditSstpClientDialog
+          clientName={editing.name}
+          creds={creds}
+          onCancel={() => setEditing(null)}
+          onSubmit={onSubmitSstpEdit}
         />
       ) : null}
       {editing && editing.protocol === 'wireguard' ? (
@@ -389,28 +504,35 @@ export function ClientsSection({
       ) : null}
       <ConfirmDialog
         open={!!pendingDelete}
-        title={
-          pendingDelete?.protocol === 'wireguard'
-            ? t('clients.delete.wgTitle')
-            : pendingDelete?.protocol === 'v2ray'
-              ? t('clients.delete.v2rayTitle')
-              : t('clients.delete.l2tpTitle')
-        }
+        title={t(`clients.delete.${deleteKey(pendingDelete)}Title`)}
         description={
           pendingDelete
-            ? pendingDelete.protocol === 'wireguard'
-              ? t('clients.delete.wgDescription', { name: pendingDelete.name })
-              : pendingDelete.protocol === 'v2ray'
-                ? t('clients.delete.v2rayDescription', {
-                    name: pendingDelete.comment || pendingDelete.name,
-                  })
-                : t('clients.delete.l2tpDescription', { name: pendingDelete.name })
+            ? t(`clients.delete.${deleteKey(pendingDelete)}Description`, {
+                name:
+                  pendingDelete.protocol === 'v2ray'
+                    ? pendingDelete.comment || pendingDelete.name
+                    : pendingDelete.name,
+              })
             : undefined
         }
         confirmLabel={deleteSubmitting ? t('shared.deleting') : t('shared.delete')}
         destructive
         onConfirm={onConfirmDelete}
         onCancel={() => (deleteSubmitting ? undefined : setPendingDelete(null))}
+      />
+      <ConfirmDialog
+        open={!!pendingReset}
+        title={t('clients.resetTraffic.title')}
+        description={
+          pendingReset
+            ? t('clients.resetTraffic.description', { name: pendingReset.name })
+            : undefined
+        }
+        confirmLabel={
+          resetSubmitting ? t('clients.resetTraffic.resetting') : t('clients.resetTraffic.confirm')
+        }
+        onConfirm={onConfirmReset}
+        onCancel={() => (resetSubmitting ? undefined : setPendingReset(null))}
       />
     </Stack>
   );

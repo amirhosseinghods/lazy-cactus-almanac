@@ -187,6 +187,16 @@ export async function testEthernetCable(
   );
 }
 
+export async function resetInterfaceTrafficCounter(
+  creds: SystemCredentials,
+  nameOrId: string,
+): Promise<void> {
+  await apiRequest<void>(`/api/interface/traffic-counter/${encodeURIComponent(nameOrId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(creds),
+  });
+}
+
 export type WanInterfaceType = 'foreign' | 'domestic';
 
 export interface UpdateWanInterfaceRequest {
@@ -479,6 +489,45 @@ export async function setVPNBypass(
     },
     body: JSON.stringify({ enabled }),
     signal,
+  });
+}
+
+export interface ForeignSite {
+  id: string;
+  /** Domain, IPv4 address or range. */
+  address: string;
+}
+
+export async function fetchForeignSites(
+  creds: SystemCredentials,
+  signal?: AbortSignal,
+): Promise<ForeignSite[]> {
+  return apiRequest<ForeignSite[]>('/api/route/foreign-sites', {
+    method: 'GET',
+    headers: authHeaders(creds),
+    cache: 'no-store',
+    signal,
+  });
+}
+
+export async function addForeignSite(
+  creds: SystemCredentials,
+  address: string,
+): Promise<ForeignSite[]> {
+  return apiRequest<ForeignSite[]>('/api/route/foreign-sites', {
+    method: 'POST',
+    headers: { ...authHeaders(creds), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ address }),
+  });
+}
+
+export async function removeForeignSite(
+  creds: SystemCredentials,
+  id: string,
+): Promise<ForeignSite[]> {
+  return apiRequest<ForeignSite[]>(`/api/route/foreign-sites/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: authHeaders(creds),
   });
 }
 

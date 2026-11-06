@@ -22,6 +22,11 @@
       "l2tpUpdateFailed": "Failed to update L2TP client",
       "l2tpUpdateFailedDescription": "Failed to update L2TP client.",
       "l2tpUpdated": "L2TP client \"{{name}}\" updated",
+      "addSstpFailedDescription": "Failed to add SSTP client.",
+      "sstpAdded": "SSTP client \"{{name}}\" added",
+      "sstpUpdateFailed": "Failed to update SSTP client",
+      "sstpUpdateFailedDescription": "Failed to update SSTP client.",
+      "sstpUpdated": "SSTP client \"{{name}}\" updated",
       "deleteFailed": "Failed to delete client",
       "deleteFailedDescription": "Failed to delete client.",
       "deletedNamed": "Client \"{{name}}\" deleted",
@@ -30,7 +35,10 @@
       "v2rayCreatingDescription": "Downloading sing-box to the router. This can take a few minutes.",
       "v2rayAdded": "V2Ray client \"{{name}}\" is ready",
       "v2rayFailed": "Failed to set up V2Ray client",
-      "addV2rayFailedDescription": "Failed to add V2Ray client."
+      "addV2rayFailedDescription": "Failed to add V2Ray client.",
+      "trafficReset": "Traffic of \"{{name}}\" reset",
+      "trafficResetFailed": "Failed to reset traffic",
+      "trafficResetFailedDescription": "Failed to reset the traffic counter."
     },
     "title": "Starlink Masking VPN Client",
     "description": "VPN clients that conceal the Starlink IP.",
@@ -46,7 +54,8 @@
       "setGatewayFor": "Set {{name}} as Starlink gateway",
       "setGateway": "Set gateway",
       "noMatch": "No clients match the current filters.",
-      "empty": "No VPN clients yet."
+      "empty": "No VPN clients yet.",
+      "resetTrafficFor": "Reset traffic of {{name}}"
     },
     "delete": {
       "wgTitle": "Delete WireGuard client",
@@ -54,13 +63,21 @@
       "wgDescription": "Remove \"{{name}}\" from this router? Associated peers and IP address will also be removed. This cannot be undone.",
       "l2tpDescription": "Remove \"{{name}}\" from this router? This cannot be undone.",
       "v2rayTitle": "Delete V2Ray client",
-      "v2rayDescription": "Remove \"{{name}}\" from this router? Its container, interface and configuration will also be removed. This cannot be undone."
+      "v2rayDescription": "Remove \"{{name}}\" from this router? Its container, interface and configuration will also be removed. This cannot be undone.",
+      "sstpTitle": "Delete SSTP client",
+      "sstpDescription": "Remove \"{{name}}\" from this router? This cannot be undone."
     },
     "form": {
       "editTitle": "Edit VPN client",
       "newTitle": "New VPN client",
       "endpointHost": "Endpoint host",
       "endpointPort": "Endpoint port"
+    },
+    "resetTraffic": {
+      "title": "Reset traffic counter",
+      "description": "Reset the download and upload counters of \"{{name}}\" to zero? The previous totals are not kept.",
+      "confirm": "Reset",
+      "resetting": "Resetting…"
     }
   },
   "peers": {
@@ -175,6 +192,7 @@
     "yes": "Yes",
     "no": "No",
     "passwordRequired": "Password is required.",
+    "userRequired": "User is required.",
     "wgKeyInvalid": "Enter a valid WireGuard key (44-character base64).",
     "adding": "Adding…",
     "enabledOnCreation": "Enabled on creation",
@@ -322,8 +340,11 @@
   },
   "l2tpEdit": {
     "loadFailed": "Failed to load L2TP client.",
-    "userRequired": "User is required.",
     "title": "Edit L2TP client - {{name}}"
+  },
+  "sstpEdit": {
+    "loadFailed": "Failed to load SSTP client.",
+    "title": "Edit SSTP client - {{name}}"
   },
   "wgPeerEdit": {
     "updateFailed": "Failed to update WireGuard peer.",
@@ -557,5 +578,17 @@
     "listUpdated": "Iranian IP list updated: {{total}} ranges ({{added}} added, {{removed}} removed)",
     "listFailed": "Failed to update the Iranian IP list",
     "listHint": "Merged from Chocolate4U/Iran-v2ray-rules (GeoIP) and ipverse/rir-ip (registry), downloaded by the panel over Starlink. Only the differences are applied."
+  },
+  "foreignSites": {
+    "title": "Sites that always use Starlink",
+    "description": "Add sites by hand that should skip the VPN and go straight out the Starlink link, on every network. Use * for any part of a name: *.example.com covers example.com and all its subdomains, star*.example.com covers names that start with star, example.* covers every ending. Wildcards need RouterOS 7.6+ and only work for devices that use the router as their DNS.",
+    "placeholder": "example.com, *.example.com, example.*, 1.2.3.4 or 1.2.3.0/24",
+    "inputLabel": "Site",
+    "add": "Add",
+    "remove": "Remove",
+    "empty": "No sites added yet.",
+    "added": "{{site}} now goes through Starlink",
+    "removed": "{{site}} removed",
+    "failed": "Failed to update the Starlink site list"
   }
 }

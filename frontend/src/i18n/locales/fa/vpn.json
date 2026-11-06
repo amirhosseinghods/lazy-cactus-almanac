@@ -22,6 +22,11 @@
       "l2tpUpdateFailed": "به‌روزرسانی کلاینت L2TP ناموفق بود",
       "l2tpUpdateFailedDescription": "به‌روزرسانی کلاینت L2TP ناموفق بود.",
       "l2tpUpdated": "کلاینت L2TP «{{name}}» به‌روزرسانی شد",
+      "addSstpFailedDescription": "افزودن کلاینت SSTP ناموفق بود.",
+      "sstpAdded": "کلاینت SSTP «{{name}}» افزوده شد",
+      "sstpUpdateFailed": "به‌روزرسانی کلاینت SSTP ناموفق بود",
+      "sstpUpdateFailedDescription": "به‌روزرسانی کلاینت SSTP ناموفق بود.",
+      "sstpUpdated": "کلاینت SSTP «{{name}}» به‌روزرسانی شد",
       "deleteFailed": "حذف کلاینت ناموفق بود",
       "deleteFailedDescription": "حذف کلاینت ناموفق بود.",
       "deletedNamed": "کلاینت «{{name}}» حذف شد",
@@ -30,7 +35,10 @@
       "v2rayCreatingDescription": "در حال دانلود sing-box روی روتر. ممکن است چند دقیقه طول بکشد.",
       "v2rayAdded": "کلاینت V2Ray «{{name}}» آماده است",
       "v2rayFailed": "راه‌اندازی کلاینت V2Ray ناموفق بود",
-      "addV2rayFailedDescription": "افزودن کلاینت V2Ray ناموفق بود."
+      "addV2rayFailedDescription": "افزودن کلاینت V2Ray ناموفق بود.",
+      "trafficReset": "ترافیک «{{name}}» بازنشانی شد",
+      "trafficResetFailed": "بازنشانی ترافیک ناموفق بود",
+      "trafficResetFailedDescription": "بازنشانی شمارنده ترافیک ناموفق بود."
     },
     "title": "کلاینت وی پی ان پنهان‌سازی استارلینک",
     "description": "کلاینت‌های وی پی ان که IP اینترنت استارلینک را پنهان می‌کنند.",
@@ -46,7 +54,8 @@
       "setGatewayFor": "تنظیم {{name}} به‌عنوان گیت‌وی استارلینک",
       "setGateway": "تنظیم گیت‌وی",
       "noMatch": "هیچ کلاینتی با فیلترهای فعلی مطابقت ندارد.",
-      "empty": "هنوز کلاینت وی پی انی وجود ندارد."
+      "empty": "هنوز کلاینت وی پی انی وجود ندارد.",
+      "resetTrafficFor": "بازنشانی ترافیک {{name}}"
     },
     "delete": {
       "wgTitle": "حذف کلاینت WireGuard",
@@ -54,13 +63,21 @@
       "wgDescription": "«{{name}}» از این روتر حذف شود؟ همتاها و آدرس IP مرتبط هم حذف می‌شوند. این کار برگشت‌پذیر نیست.",
       "l2tpDescription": "«{{name}}» از این روتر حذف شود؟ این کار برگشت‌پذیر نیست.",
       "v2rayTitle": "حذف کلاینت V2Ray",
-      "v2rayDescription": "«{{name}}» از این روتر حذف شود؟ کانتینر، اینترفیس و پیکربندی آن هم حذف می‌شوند. این کار برگشت‌پذیر نیست."
+      "v2rayDescription": "«{{name}}» از این روتر حذف شود؟ کانتینر، اینترفیس و پیکربندی آن هم حذف می‌شوند. این کار برگشت‌پذیر نیست.",
+      "sstpTitle": "حذف کلاینت SSTP",
+      "sstpDescription": "«{{name}}» از این روتر حذف شود؟ این کار برگشت‌پذیر نیست."
     },
     "form": {
       "editTitle": "ویرایش کلاینت وی پی ان",
       "newTitle": "کلاینت وی پی ان جدید",
       "endpointHost": "میزبان نقطهٔ پایانی (endpoint)",
       "endpointPort": "پورت نقطهٔ پایانی (endpoint)"
+    },
+    "resetTraffic": {
+      "title": "بازنشانی شمارنده ترافیک",
+      "description": "شمارنده‌های دانلود و آپلود «{{name}}» صفر شود؟ مقادیر قبلی نگه داشته نمی‌شوند.",
+      "confirm": "بازنشانی",
+      "resetting": "در حال بازنشانی…"
     }
   },
   "peers": {
@@ -175,6 +192,7 @@
     "yes": "بله",
     "no": "خیر",
     "passwordRequired": "رمز عبور الزامی است.",
+    "userRequired": "کاربر الزامی است.",
     "wgKeyInvalid": "یک کلید معتبر WireGuard وارد کنید (base64 با ۴۴ کاراکتر).",
     "adding": "در حال افزودن…",
     "enabledOnCreation": "فعال هنگام ساخت",
@@ -322,8 +340,11 @@
   },
   "l2tpEdit": {
     "loadFailed": "بارگذاری کلاینت L2TP ناموفق بود.",
-    "userRequired": "کاربر الزامی است.",
     "title": "ویرایش کلاینت L2TP - {{name}}"
+  },
+  "sstpEdit": {
+    "loadFailed": "بارگذاری کلاینت SSTP ناموفق بود.",
+    "title": "ویرایش کلاینت SSTP - {{name}}"
   },
   "wgPeerEdit": {
     "updateFailed": "به‌روزرسانی همتای WireGuard ناموفق بود.",
@@ -557,5 +578,17 @@
     "listUpdated": "فهرست آی‌پی ایران به‌روز شد: {{total}} رنج ({{added}} اضافه، {{removed}} حذف)",
     "listFailed": "به‌روزرسانی فهرست آی‌پی ایران ناموفق بود",
     "listHint": "ترکیبی از Chocolate4U/Iran-v2ray-rules (GeoIP) و ipverse/rir-ip (ثبت رسمی)، که پنل از طریق استارلینک دانلود می‌کند. فقط تفاوت‌ها اعمال می‌شوند."
+  },
+  "foreignSites": {
+    "title": "سایت‌هایی که همیشه از استارلینک استفاده می‌کنند",
+    "description": "سایت‌هایی را که باید بدون وی پی ان و مستقیم از لینک استارلینک باز شوند، دستی اضافه کنید. این قانون برای همه‌ی شبکه‌ها اعمال می‌شود. برای هر بخشی از اسم می‌توانید * بگذارید: ‎*.example.com‎ خود دامنه و همه‌ی ساب‌دامین‌هایش را می‌گیرد، ‎star*.example.com‎ اسم‌هایی که با star شروع می‌شوند، و ‎example.*‎ همه‌ی پسوندها را. ستاره‌دارها به RouterOS نسخه‌ی ۷.۶ به بالا نیاز دارند و فقط برای دستگاه‌هایی کار می‌کنند که DNS آن‌ها خود روتر است.",
+    "placeholder": "example.com، ‎*.example.com‎، ‎example.*‎، 1.2.3.4 یا 1.2.3.0/24",
+    "inputLabel": "سایت",
+    "add": "افزودن",
+    "remove": "حذف",
+    "empty": "هنوز سایتی اضافه نشده است.",
+    "added": "{{site}} از این پس از استارلینک می‌رود",
+    "removed": "{{site}} حذف شد",
+    "failed": "به‌روزرسانی فهرست سایت‌های استارلینک ناموفق بود"
   }
 }

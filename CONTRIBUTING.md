@@ -34,6 +34,22 @@ Requires Node.js 20+ and Go 1.26+. The frontend runs on `http://localhost:3000`,
 - Keep the description tight: a short summary and the bullet points that matter. The diff already shows what changed; the description explains why.
 - Re-base or merge in the latest `dev` before opening the PR. This project prefers `git merge` over `git rebase` for syncing feature branches.
 
+## Releases
+
+Every merge to `dev` is released automatically as a pre-release. The version is not bumped: the newest stable or release candidate version gets a dev suffix, so the build is tagged `vX.Y.Z-dev.<date>.<n>`.
+
+| Build             | Tag                     | How it is made                    |
+| ----------------- | ----------------------- | --------------------------------- |
+| Development       | `v1.3.0-dev.20261026.1` | automatic on every merge to `dev` |
+| Release candidate | `v1.3.0-rc.1`           | push the tag                      |
+| Stable            | `v1.2.3`                | push the tag                      |
+
+The rolling `snapshot` release is still rebuilt on every merge to `dev`.
+
+`release-meta.json` (the minimum app version a release can be installed from, RouterOS compatibility and similar metadata) is embedded as a hidden `<!-- nasnet-meta: {...} -->` comment in the body of new versioned releases, so it can be read from the GitHub releases API in one call. Releases published before this was added, and the rolling `snapshot` release, do not contain the comment, so consumers must use a fallback when it is absent. Edit that file when compatibility changes.
+
+Stable tags move the `latest` image tag when they are on the tip of the default branch. Release candidate and development builds never do. `backend/release-tag.sh` creates and pushes a tag.
+
 ## What CI and the pre-push hook check
 
 Husky runs the following on every `git push`, and CI re-runs them on the PR:
