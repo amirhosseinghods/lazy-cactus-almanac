@@ -71,11 +71,12 @@ export function ForeignSitesCard({ creds }: Props) {
     const added = await run(
       () => addForeignSite(creds, site),
       t('foreignSites.added', { site }),
-      (next) =>
-        // The backend may normalise what was typed, so take the newest entry that differs from before.
-        next.find((s) => !sites?.some((old) => old.id === s.id))?.iranianIps?.length
-          ? t('foreignSites.iranianWarning')
-          : undefined,
+      (next) => {
+        // The backend may normalise what was typed, so take the entry that is new.
+        const fresh = next.find((s) => !sites?.some((old) => old.id === s.id));
+        if (fresh?.route === 'vpn') return t('foreignSites.viaVpnNote');
+        return fresh?.iranianIps?.length ? t('foreignSites.iranianWarning') : undefined;
+      },
     );
     if (added) setDraft('');
   };
@@ -109,10 +110,17 @@ export function ForeignSitesCard({ creds }: Props) {
                 <span dir="ltr" style={{ fontFamily: 'monospace' }}>
                   {s.address}
                 </span>
-                {s.iranianIps?.length ? (
+                {s.route === 'vpn' ? (
+                  <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                    <Badge tone="info">{t('foreignSites.viaVpnBadge')}</Badge>
+                    <span style={{ opacity: 0.8 }}>{t('foreignSites.viaVpnNote')}</span>
+                  </span>
+                ) : s.iranianIps?.length ? (
                   <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                     <Badge tone="warning">{t('foreignSites.iranianBadge')}</Badge>
-                    <span style={{ opacity: 0.8 }}>{t('foreignSites.iranianWarning')}</span>
+                    <span style={{ opacity: 0.8 }}>
+                      {t('foreignSites.iranianWarning')} {t('foreignSites.readdForVpn')}
+                    </span>
                   </span>
                 ) : null}
               </span>

@@ -581,7 +581,7 @@
   },
   "foreignSites": {
     "title": "Sites that always use Starlink",
-    "description": "Add sites by hand that should skip the VPN and go straight out the Starlink link, on every network. Use * for any part of a name: *.example.com covers example.com and all its subdomains, star*.example.com covers names that start with star, example.* covers every ending. Wildcards need RouterOS 7.6+ and only work for devices that use the router as their DNS.",
+    "description": "Add sites by hand that should skip the VPN and go straight out the Starlink link, on every network. Sites whose server is in Iran go through the VPN instead, so they never see the Starlink IP. Use * for any part of a name: *.example.com covers example.com and all its subdomains, star*.example.com covers names that start with star, example.* covers every ending. Wildcards need RouterOS 7.6+ and only work for devices that use the router as their DNS.",
     "placeholder": "example.com, *.example.com, example.*, 1.2.3.4 or 1.2.3.0/24",
     "inputLabel": "Site",
     "add": "Add",
@@ -591,6 +591,9 @@
     "removed": "{{site}} removed",
     "failed": "Failed to update the Starlink site list",
     "iranianBadge": "Iranian server",
-    "iranianWarning": "This site's server is in Iran. The firewall blocks Iranian IPs outside the domestic link, so it will not open through Starlink; it opens over the domestic link instead."
+    "iranianWarning": "This site's server is in Iran. The firewall blocks Iranian IPs outside the domestic link, so it will not open through Starlink; it opens over the domestic link instead.",
+    "viaVpnBadge": "Iranian server · through VPN",
+    "viaVpnNote": "This site's server is in Iran, so it goes through the VPN and sees the VPN's IP, never Starlink's. If the VPN is down, it stays blocked.",
+    "readdForVpn": "Remove it and add it again to send it through the VPN."
   }
 }

@@ -496,6 +496,8 @@ export interface ForeignSite {
   id: string;
   /** Domain, IPv4 address or range. */
   address: string;
+  /** "vpn" for a site whose server is in Iran, so it never sees the Starlink IP. */
+  route: 'starlink' | 'vpn';
   /** Its addresses on the Iranian IP list; the firewall keeps those off Starlink. */
   iranianIps?: string[];
 }

@@ -7,6 +7,7 @@ import (
 	"log"
 	"nasnet-panel/internal/handler/common"
 	"nasnet-panel/internal/handler/firewall"
+	"nasnet-panel/internal/handler/plugin"
 	"nasnet-panel/internal/handler/vpn"
 	"net"
 	"net/http"
@@ -28,6 +29,12 @@ import (
 // device looks up a matching name through the router, RouterOS adds the
 // answer's IPs to the same address list. This only covers devices that use
 // the router as their DNS server.
+//
+// A site whose server is in Iran goes through the VPN instead, into its own
+// list. The firewall drops traffic to Iranian IPs outside the domestic link
+// so an Iranian server never sees the Starlink IP; an accept rule ahead of
+// that drop lets this list out through VPN interfaces only, so when the VPN
+// is down or bypassed the site stays blocked rather than leaving via Starlink.
 const (
 	foreignSitesList        = "Manual-Foreign-Sites"
 	foreignSitesRuleComment = "Manual-Sites-via-Foreign"
@@ -36,7 +43,24 @@ const (
 	// foreignDNSForwarder is the forwarder the base config sends foreign-link lookups to.
 	foreignDNSForwarder = "Foreign"
 	fallbackDNSServer   = "1.1.1.1"
+
+	vpnSitesList        = "Manual-VPN-Sites"
+	vpnSitesRuleComment = "Manual-Sites-via-VPN"
+
+	routeStarlink = "starlink"
+	routeVPN      = "vpn"
 )
+
+// siteRoute is one way out for hand-added sites: its address list, the
+// comment its rules carry, and the routing table the mangle rule picks.
+type siteRoute struct {
+	name, list, comment, mark string
+}
+
+var siteRoutes = []siteRoute{
+	{routeStarlink, foreignSitesList, foreignSitesRuleComment, "to-Foreign"},
+	{routeVPN, vpnSitesList, vpnSitesRuleComment, "to-VPN"},
+}
 
 var (
 	hostnamePattern = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`)
@@ -112,50 +136,58 @@ func wildcardRegexp(pattern string) string {
 }
 
 func listForeignSites(client *routeros.Client) ([]ForeignSiteResponse, error) {
-	items, err := client.GetAll("/ip/firewall/address-list", "?=list="+foreignSitesList)
-	if err != nil {
-		return nil, err
-	}
 	// Domain entries spawn dynamic IP items, commented with the domain; they
 	// are not shown, only used to tell which sites resolve to Iranian IPs.
 	resolved := map[string][]string{}
-	out := make([]ForeignSiteResponse, 0, len(items))
-	for _, it := range items {
-		if it["dynamic"] == "true" {
-			resolved[it["comment"]] = append(resolved[it["comment"]], it["address"])
-			continue
+	out := []ForeignSiteResponse{}
+	for _, r := range siteRoutes {
+		items, err := client.GetAll("/ip/firewall/address-list", "?=list="+r.list)
+		if err != nil {
+			return nil, err
 		}
-		out = append(out, ForeignSiteResponse{ID: it[".id"], Address: it["address"]})
+		for _, it := range items {
+			if it["dynamic"] == "true" {
+				resolved[it["comment"]] = append(resolved[it["comment"]], it["address"])
+				continue
+			}
+			out = append(out, ForeignSiteResponse{ID: it[".id"], Address: it["address"], Route: r.name})
+		}
+		rules, err := listWildcardRules(client, r)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rules...)
 	}
-	rules, err := listWildcardRules(client)
-	if err != nil {
-		return nil, err
-	}
-	out = append(out, rules...)
 	flagIranianSites(client, out, resolved)
 	return out, nil
 }
 
 // flagIranianSites fills IranianIPs for sites whose addresses are on the
-// Iranian IP list. The firewall drops traffic to those outside the domestic
-// link, so such a site will not open through Starlink. A failure here only
-// loses the warning, so it is logged rather than returned.
+// Iranian IP list. A failure here only loses the flag, so it is logged.
 func flagIranianSites(client *routeros.Client, sites []ForeignSiteResponse, resolved map[string][]string) {
-	iran, err := client.ListFirewallAddressListItems(routeros.FirewallAddressListFilter{ListName: firewall.DomesticAddressList})
-	if err != nil || len(iran) == 0 {
-		if err != nil {
-			log.Printf("foreign sites: cannot read %s: %v", firewall.DomesticAddressList, err)
-		}
+	iran, err := iranianList(client)
+	if err != nil {
+		log.Printf("foreign sites: cannot read %s: %v", firewall.DomesticAddressList, err)
 		return
 	}
 	for i := range sites {
-		for _, addr := range siteAddresses(sites[i].Address, resolved) {
-			// shortcut: a range is flagged only when one Iranian entry holds all of it.
-			if m, err := routeros.FilterAddressListByContainment(iran, addr); err == nil && len(m) > 0 {
-				sites[i].IranianIPs = append(sites[i].IranianIPs, addr)
-			}
+		sites[i].IranianIPs = iranianAddresses(iran, siteAddresses(sites[i].Address, resolved))
+	}
+}
+
+func iranianList(client *routeros.Client) ([]routeros.FirewallAddressListItem, error) {
+	return client.ListFirewallAddressListItems(routeros.FirewallAddressListFilter{ListName: firewall.DomesticAddressList})
+}
+
+func iranianAddresses(iran []routeros.FirewallAddressListItem, addrs []string) []string {
+	var out []string
+	for _, addr := range addrs {
+		// shortcut: a range is flagged only when one Iranian entry holds all of it.
+		if m, err := routeros.FilterAddressListByContainment(iran, addr); err == nil && len(m) > 0 {
+			out = append(out, addr)
 		}
 	}
+	return out
 }
 
 // siteAddresses returns the IPs a site stands for: itself for an address or
@@ -186,23 +218,23 @@ func siteAddresses(site string, resolved map[string][]string) []string {
 	return out
 }
 
-func listWildcardRules(client *routeros.Client) ([]ForeignSiteResponse, error) {
-	entries, err := client.GetAll("/ip/dns/static", "?=address-list="+foreignSitesList)
+func listWildcardRules(client *routeros.Client, r siteRoute) ([]ForeignSiteResponse, error) {
+	entries, err := client.GetAll("/ip/dns/static", "?=address-list="+r.list)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]ForeignSiteResponse, 0, len(entries))
 	for _, e := range entries {
-		pattern, ok := strings.CutPrefix(e["comment"], foreignSitesRuleComment+": ")
+		pattern, ok := strings.CutPrefix(e["comment"], r.comment+": ")
 		if !ok {
 			continue
 		}
-		out = append(out, ForeignSiteResponse{ID: foreignSitesDNSIDPrefix + e[".id"], Address: pattern})
+		out = append(out, ForeignSiteResponse{ID: foreignSitesDNSIDPrefix + e[".id"], Address: pattern, Route: r.name})
 	}
 	return out, nil
 }
 
-func addWildcardRule(client *routeros.Client, pattern string) error {
+func addWildcardRule(client *routeros.Client, r siteRoute, pattern string) error {
 	forwardTo := fallbackDNSServer
 	if fwds, err := client.FindDNSForwarders(routeros.DNSForwarderFilter{Name: foreignDNSForwarder}); err == nil && len(fwds) > 0 {
 		forwardTo = foreignDNSForwarder
@@ -211,8 +243,8 @@ func addWildcardRule(client *routeros.Client, pattern string) error {
 		"=type=FWD",
 		"=regexp="+wildcardRegexp(pattern),
 		"=forward-to="+forwardTo,
-		"=address-list="+foreignSitesList,
-		"=comment="+foreignSitesRuleComment+": "+pattern,
+		"=address-list="+r.list,
+		"=comment="+r.comment+": "+pattern,
 	)
 	if err != nil {
 		return fmt.Errorf("RouterOS 7.6 or newer is needed for wildcard sites: %w", err)
@@ -221,31 +253,68 @@ func addWildcardRule(client *routeros.Client, pattern string) error {
 	return client.FlushDNSCache()
 }
 
-// ensureForeignSitesRule adds the mangle rule ahead of every other routing
+// ensureSitesRule adds the route's mangle rule ahead of every other routing
 // decision, so the list wins over the VPN, split and domestic rules.
-func ensureForeignSitesRule(client *routeros.Client) error {
+func ensureSitesRule(client *routeros.Client, r siteRoute) error {
 	rules, err := client.ListMangleRules()
 	if err != nil {
 		return err
 	}
 	placeBefore := ""
-	for _, r := range rules {
-		if r.Comment == foreignSitesRuleComment {
+	for _, m := range rules {
+		if m.Comment == r.comment {
 			return nil
 		}
-		if placeBefore == "" && r.Chain == "prerouting" && r.Action == "mark-routing" {
-			placeBefore = r.ID
+		if placeBefore == "" && m.Chain == "prerouting" && m.Action == "mark-routing" {
+			placeBefore = m.ID
 		}
 	}
 	_, err = client.AddMangleRule(routeros.MangleRuleConfig{
 		Chain:          "prerouting",
 		Action:         "mark-routing",
-		DstAddressList: foreignSitesList,
-		NewRoutingMark: "to-Foreign",
+		DstAddressList: r.list,
+		NewRoutingMark: r.mark,
 		PlaceBefore:    placeBefore,
-		Comment:        foreignSitesRuleComment,
+		Comment:        r.comment,
 	})
 	return err
+}
+
+// ensureVPNSitesFilter lets the VPN list past the drop of Iranian IPs, but
+// only out VPN interfaces: VPN-WAN members and the containers bridge that
+// V2Ray clients answer on. It goes right before that drop rule.
+func ensureVPNSitesFilter(client *routeros.Client) error {
+	existing, err := client.GetAll("/ip/firewall/filter", "?=comment="+vpnSitesRuleComment)
+	if err != nil {
+		return err
+	}
+	if len(existing) > 0 {
+		return nil
+	}
+	drops, err := client.GetAll("/ip/firewall/filter", "?=chain=forward", "?=action=drop", "?=dst-address-list="+firewall.DomesticAddressList)
+	if err != nil {
+		return err
+	}
+	place := []string{}
+	if len(drops) > 0 {
+		place = append(place, "=place-before="+drops[0][".id"])
+	}
+	for _, out := range []string{"=out-interface-list=VPN-WAN", "=out-interface=" + plugin.ContainersBridge} {
+		args := append([]string{"=chain=forward", "=action=accept", "=dst-address-list=" + vpnSitesList, out, "=comment=" + vpnSitesRuleComment}, place...)
+		if _, err := client.Add("/ip/firewall/filter", args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// routeForSite picks the VPN for a site whose server is in Iran, Starlink otherwise.
+func routeForSite(client *routeros.Client, site string) siteRoute {
+	iran, err := iranianList(client)
+	if err == nil && len(iranianAddresses(iran, siteAddresses(site, nil))) > 0 {
+		return siteRoutes[1]
+	}
+	return siteRoutes[0]
 }
 
 // HandleListForeignSites lists the sites sent through the foreign link
@@ -309,13 +378,19 @@ func HandleAddForeignSite(c echo.Context) error {
 			return common.ErrorResponse(c, http.StatusConflict, site+" is already in the list", errors.New("duplicate site"))
 		}
 	}
-	if err := ensureForeignSitesRule(client); err != nil {
-		return common.ErrorResponse(c, http.StatusInternalServerError, "Failed to add the foreign-link routing rule", err)
+	r := routeForSite(client, site)
+	if err := ensureSitesRule(client, r); err != nil {
+		return common.ErrorResponse(c, http.StatusInternalServerError, "Failed to add the site routing rule", err)
+	}
+	if r.name == routeVPN {
+		if err := ensureVPNSitesFilter(client); err != nil {
+			return common.ErrorResponse(c, http.StatusInternalServerError, "Failed to add the VPN site firewall rule", err)
+		}
 	}
 	if strings.Contains(site, "*") {
-		err = addWildcardRule(client, site)
+		err = addWildcardRule(client, r, site)
 	} else {
-		_, err = client.AddFirewallAddressListItem(foreignSitesList, site, false, foreignSitesRuleComment)
+		_, err = client.AddFirewallAddressListItem(r.list, site, false, r.comment)
 	}
 	if err != nil {
 		return common.ErrorResponse(c, http.StatusInternalServerError, "Failed to add "+site, err)
