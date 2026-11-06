@@ -29,3 +29,20 @@ type ForeignSiteResponse struct {
 	// firewall keeps those off Starlink.
 	IranianIPs []string `json:"iranianIps,omitempty" example:"130.193.77.35"`
 }
+
+// IranSiteVPNResponse is a VPN client hand-added Iranian sites may use.
+type IranSiteVPNResponse struct {
+	Name    string `json:"name" example:"edmund-arden-l2tp-client"`
+	Label   string `json:"label" example:"T"`
+	Type    string `json:"type" example:"l2tp-out"`
+	Running bool   `json:"running"`
+	// Order is the client's place among the ticked ones (1 is tried first), or 0 when not ticked.
+	Order int `json:"order"`
+	// InUse is true for the ticked client currently carrying the sites.
+	InUse bool `json:"inUse"`
+}
+
+// SetIranSiteVPNsRequest lists the VPN clients Iranian sites may use, in order.
+type SetIranSiteVPNsRequest struct {
+	Clients []string `json:"clients" example:"edmund-arden-l2tp-client"`
+}

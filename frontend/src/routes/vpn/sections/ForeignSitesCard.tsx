@@ -10,6 +10,7 @@ import {
   type ForeignSite,
   type VPNCredentials,
 } from '../../../api';
+import { IranSiteVpnPicker } from './IranSiteVpnPicker';
 import { SectionHeader } from './SectionHeader';
 
 interface Props {
@@ -142,6 +143,7 @@ export function ForeignSitesCard({ creds }: Props) {
           ))
         )}
       </div>
+      <IranSiteVpnPicker creds={creds} />
     </Card>
   );
 }

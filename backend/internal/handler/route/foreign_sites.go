@@ -269,11 +269,15 @@ func ensureSitesRule(client *routeros.Client, r siteRoute) error {
 			placeBefore = m.ID
 		}
 	}
+	mark := r.mark
+	if r.name == routeVPN {
+		mark = vpnSitesMark(client)
+	}
 	_, err = client.AddMangleRule(routeros.MangleRuleConfig{
 		Chain:          "prerouting",
 		Action:         "mark-routing",
 		DstAddressList: r.list,
-		NewRoutingMark: r.mark,
+		NewRoutingMark: mark,
 		PlaceBefore:    placeBefore,
 		Comment:        r.comment,
 	})

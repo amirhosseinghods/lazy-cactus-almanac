@@ -152,6 +152,8 @@ func RegisterRoutes(e *echo.Echo) {
 	routeGroup.POST("/iran-ip/update", vpn.HandleUpdateIranIPList)
 	routeGroup.GET("/foreign-sites", route.HandleListForeignSites)
 	routeGroup.POST("/foreign-sites", route.HandleAddForeignSite)
+	routeGroup.GET("/foreign-sites/vpns", route.HandleListIranSiteVPNs)
+	routeGroup.PUT("/foreign-sites/vpns", route.HandleSetIranSiteVPNs)
 	routeGroup.DELETE("/foreign-sites/:id", route.HandleRemoveForeignSite)
 
 	scanGroup := e.Group("/api/scan")

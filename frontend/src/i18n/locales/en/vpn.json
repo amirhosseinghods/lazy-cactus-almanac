@@ -594,6 +594,16 @@
     "iranianWarning": "This site's server is in Iran. The firewall blocks Iranian IPs outside the domestic link, so it will not open through Starlink; it opens over the domestic link instead.",
     "viaVpnBadge": "Iranian server · through VPN",
     "viaVpnNote": "This site's server is in Iran, so it goes through the VPN and sees the VPN's IP, never Starlink's. If the VPN is down, it stays blocked.",
-    "readdForVpn": "Remove it and add it again to send it through the VPN."
+    "readdForVpn": "Remove it and add it again to send it through the VPN.",
+    "vpns": {
+      "title": "VPNs for Iranian sites",
+      "description": "Iranian sites use the first ticked VPN that is up, in the order shown. If none is up, they stay blocked.",
+      "noneTicked": "Nothing ticked: Iranian sites use the main VPN gateway. Tick VPNs to choose which ones they may use.",
+      "order": "Choice {{n}}",
+      "inUse": "In use",
+      "down": "Down",
+      "allDown": "None of the ticked VPNs is up, so Iranian sites are blocked.",
+      "failed": "Failed to update the VPNs for Iranian sites"
+    }
   }
 }

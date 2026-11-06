@@ -535,6 +535,41 @@ export async function removeForeignSite(
   });
 }
 
+export interface IranSiteVpn {
+  name: string;
+  label: string;
+  type: string;
+  running: boolean;
+  /** Place among the ticked clients (1 is tried first), 0 when not ticked. */
+  order: number;
+  /** The ticked client carrying Iranian sites right now. */
+  inUse: boolean;
+}
+
+export async function fetchIranSiteVpns(
+  creds: SystemCredentials,
+  signal?: AbortSignal,
+): Promise<IranSiteVpn[]> {
+  return apiRequest<IranSiteVpn[]>('/api/route/foreign-sites/vpns', {
+    method: 'GET',
+    headers: authHeaders(creds),
+    cache: 'no-store',
+    signal,
+  });
+}
+
+/** Ticked VPN client names, in the order they should be tried. */
+export async function setIranSiteVpns(
+  creds: SystemCredentials,
+  clients: string[],
+): Promise<IranSiteVpn[]> {
+  return apiRequest<IranSiteVpn[]>('/api/route/foreign-sites/vpns', {
+    method: 'PUT',
+    headers: { ...authHeaders(creds), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clients }),
+  });
+}
+
 export interface IranIPListState {
   entries: number;
   managedByPanel: boolean;
