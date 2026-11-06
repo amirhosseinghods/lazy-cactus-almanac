@@ -57,3 +57,20 @@ func TestWildcardRegexp(t *testing.T) {
 		}
 	}
 }
+
+func TestSiteAddresses(t *testing.T) {
+	resolved := map[string][]string{"shop.example": {"130.193.77.35"}}
+	cases := map[string][]string{
+		"130.193.77.35":   {"130.193.77.35"},
+		"130.193.77.0/24": {"130.193.77.0/24"},
+		"shop.example":    {"130.193.77.35"},
+		"*.shop.example":  {"130.193.77.35"},
+		"star*.example":   nil,
+	}
+	for in, want := range cases {
+		got := siteAddresses(in, resolved)
+		if len(got) != len(want) || (len(want) > 0 && got[0] != want[0]) {
+			t.Errorf("siteAddresses(%q) = %v, want %v", in, got, want)
+		}
+	}
+}

@@ -496,6 +496,8 @@ export interface ForeignSite {
   id: string;
   /** Domain, IPv4 address or range. */
   address: string;
+  /** Its addresses on the Iranian IP list; the firewall keeps those off Starlink. */
+  iranianIps?: string[];
 }
 
 export async function fetchForeignSites(

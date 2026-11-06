@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Card, Input, useToast } from '@nasnet/ui';
+import { Badge, Button, Card, Input, useToast } from '@nasnet/ui';
 import {
   addForeignSite,
   ApiError,
@@ -35,11 +35,22 @@ export function ForeignSitesCard({ creds }: Props) {
     return () => controller.abort();
   }, [creds]);
 
-  const run = async (action: () => Promise<ForeignSite[]>, success: string) => {
+  const run = async (
+    action: () => Promise<ForeignSite[]>,
+    success: string,
+    // Picks a warning instead of the success toast from the updated list.
+    warningFor?: (next: ForeignSite[]) => string | undefined,
+  ) => {
     setBusy(true);
     try {
-      setSites(await action());
-      toast.notify({ title: success, tone: 'success' });
+      const next = await action();
+      setSites(next);
+      const warning = warningFor?.(next);
+      toast.notify(
+        warning
+          ? { title: success, description: warning, tone: 'warning' }
+          : { title: success, tone: 'success' },
+      );
       return true;
     } catch (err) {
       toast.notify({
@@ -57,8 +68,16 @@ export function ForeignSitesCard({ creds }: Props) {
     e.preventDefault();
     const site = draft.trim();
     if (!creds || !site) return;
-    if (await run(() => addForeignSite(creds, site), t('foreignSites.added', { site })))
-      setDraft('');
+    const added = await run(
+      () => addForeignSite(creds, site),
+      t('foreignSites.added', { site }),
+      (next) =>
+        // The backend may normalise what was typed, so take the newest entry that differs from before.
+        next.find((s) => !sites?.some((old) => old.id === s.id))?.iranianIps?.length
+          ? t('foreignSites.iranianWarning')
+          : undefined,
+    );
+    if (added) setDraft('');
   };
 
   if (!sites) return null;
@@ -86,8 +105,16 @@ export function ForeignSitesCard({ creds }: Props) {
         ) : (
           sites.map((s) => (
             <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span dir="ltr" style={{ flex: 1, fontFamily: 'monospace' }}>
-                {s.address}
+              <span style={{ flex: 1, display: 'grid', gap: 4 }}>
+                <span dir="ltr" style={{ fontFamily: 'monospace' }}>
+                  {s.address}
+                </span>
+                {s.iranianIps?.length ? (
+                  <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                    <Badge tone="warning">{t('foreignSites.iranianBadge')}</Badge>
+                    <span style={{ opacity: 0.8 }}>{t('foreignSites.iranianWarning')}</span>
+                  </span>
+                ) : null}
               </span>
               <Button
                 variant="ghost"

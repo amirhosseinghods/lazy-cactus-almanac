@@ -1,14 +1,18 @@
 package route
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log"
 	"nasnet-panel/internal/handler/common"
+	"nasnet-panel/internal/handler/firewall"
 	"nasnet-panel/internal/handler/vpn"
 	"net"
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"nasnet-panel/pkg/routeros"
 
@@ -108,20 +112,78 @@ func wildcardRegexp(pattern string) string {
 }
 
 func listForeignSites(client *routeros.Client) ([]ForeignSiteResponse, error) {
-	// Domain entries spawn dynamic IP items; show only what the user added.
-	items, err := client.GetAll("/ip/firewall/address-list", "?=list="+foreignSitesList, "?=dynamic=false")
+	items, err := client.GetAll("/ip/firewall/address-list", "?=list="+foreignSitesList)
 	if err != nil {
 		return nil, err
 	}
+	// Domain entries spawn dynamic IP items, commented with the domain; they
+	// are not shown, only used to tell which sites resolve to Iranian IPs.
+	resolved := map[string][]string{}
 	out := make([]ForeignSiteResponse, 0, len(items))
 	for _, it := range items {
+		if it["dynamic"] == "true" {
+			resolved[it["comment"]] = append(resolved[it["comment"]], it["address"])
+			continue
+		}
 		out = append(out, ForeignSiteResponse{ID: it[".id"], Address: it["address"]})
 	}
 	rules, err := listWildcardRules(client)
 	if err != nil {
 		return nil, err
 	}
-	return append(out, rules...), nil
+	out = append(out, rules...)
+	flagIranianSites(client, out, resolved)
+	return out, nil
+}
+
+// flagIranianSites fills IranianIPs for sites whose addresses are on the
+// Iranian IP list. The firewall drops traffic to those outside the domestic
+// link, so such a site will not open through Starlink. A failure here only
+// loses the warning, so it is logged rather than returned.
+func flagIranianSites(client *routeros.Client, sites []ForeignSiteResponse, resolved map[string][]string) {
+	iran, err := client.ListFirewallAddressListItems(routeros.FirewallAddressListFilter{ListName: firewall.DomesticAddressList})
+	if err != nil || len(iran) == 0 {
+		if err != nil {
+			log.Printf("foreign sites: cannot read %s: %v", firewall.DomesticAddressList, err)
+		}
+		return
+	}
+	for i := range sites {
+		for _, addr := range siteAddresses(sites[i].Address, resolved) {
+			// shortcut: a range is flagged only when one Iranian entry holds all of it.
+			if m, err := routeros.FilterAddressListByContainment(iran, addr); err == nil && len(m) > 0 {
+				sites[i].IranianIPs = append(sites[i].IranianIPs, addr)
+			}
+		}
+	}
+}
+
+// siteAddresses returns the IPs a site stands for: itself for an address or
+// range, the router's resolved entries for a domain, and for a wildcard the
+// IPs of its base name (*.example.com -> example.com), when there is one.
+func siteAddresses(site string, resolved map[string][]string) []string {
+	if net.ParseIP(site) != nil || strings.Contains(site, "/") {
+		return []string{site}
+	}
+	name := strings.TrimPrefix(site, "*.")
+	if strings.Contains(name, "*") {
+		return nil
+	}
+	if ips := resolved[name]; len(ips) > 0 {
+		return ips
+	}
+	// A just-added domain has no resolved entries yet.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIP(ctx, "ip4", name)
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(addrs))
+	for _, a := range addrs {
+		out = append(out, a.String())
+	}
+	return out
 }
 
 func listWildcardRules(client *routeros.Client) ([]ForeignSiteResponse, error) {

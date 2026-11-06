@@ -589,6 +589,8 @@
     "empty": "No sites added yet.",
     "added": "{{site}} now goes through Starlink",
     "removed": "{{site}} removed",
-    "failed": "Failed to update the Starlink site list"
+    "failed": "Failed to update the Starlink site list",
+    "iranianBadge": "Iranian server",
+    "iranianWarning": "This site's server is in Iran. The firewall blocks Iranian IPs outside the domestic link, so it will not open through Starlink; it opens over the domestic link instead."
   }
 }

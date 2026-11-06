@@ -22,4 +22,7 @@ type AddForeignSiteRequest struct {
 type ForeignSiteResponse struct {
 	ID      string `json:"id" example:"*1A"`
 	Address string `json:"address" example:"chatgpt.com"`
+	// IranianIPs lists the site's addresses on the Iranian IP list; the
+	// firewall keeps those off Starlink, so the site will not open through it.
+	IranianIPs []string `json:"iranianIps,omitempty" example:"130.193.77.35"`
 }
